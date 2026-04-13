@@ -491,6 +491,43 @@ def explain_prediction(model, x, top_k=3):
     return explain
 
 
+def zrob_heatmape(samples, width=180, height=110):
+    img = np.zeros((height, width), dtype=np.float32)
+    if not samples:
+        return np.zeros((height, width, 3), dtype=np.float32)
+
+    xs = np.array([s["x"] for s in samples], dtype=np.float32)
+    ys = np.array([s["y"] for s in samples], dtype=np.float32)
+
+    xi = ((xs + SCREEN_WIDTH / 2) / SCREEN_WIDTH * (width - 1)).astype(int)
+    yi = ((SCREEN_HEIGHT / 2 - ys) / SCREEN_HEIGHT * (height - 1)).astype(int)
+
+    mask = (xi >= 0) & (xi < width) & (yi >= 0) & (yi < height)
+    xi = xi[mask]
+    yi = yi[mask]
+
+    for x_idx, y_idx in zip(xi, yi):
+        img[y_idx, x_idx] += 1.0
+
+    for _ in range(5):
+        img = (
+            img
+            + np.roll(img, 1, axis=0)
+            + np.roll(img, -1, axis=0)
+            + np.roll(img, 1, axis=1)
+            + np.roll(img, -1, axis=1)
+        ) / 5.0
+
+    if np.max(img) > 0:
+        img = np.power(img / np.max(img), 0.6)
+
+    rgb = np.zeros((height, width, 3), dtype=np.float32)
+    rgb[:, :, 0] = np.clip(img * 1.3, 0.0, 1.0)
+    rgb[:, :, 1] = np.clip(img * 0.7, 0.0, 1.0)
+    rgb[:, :, 2] = np.clip(img * 0.1, 0.0, 0.4)
+    return rgb
+
+
 # ============================================================================
 # 7. PRZEBIEG PROBY
 # ============================================================================
@@ -563,6 +600,7 @@ def run_one_trial(win, collector, trial, phase_name, phase_idx, phase_total, mod
         "samples_n": len(samples),
         "features": feat,
         "evidence": evidence,
+        "samples": samples,
     }
     return wynik
 
@@ -645,16 +683,82 @@ def pokaz_raport(win, train_rows, test_rows, model):
         win,
         text="\n".join(lines),
         color=[-0.2, -0.2, -0.2],
-        height=29,
-        wrapWidth=1450,
+        height=24,
+        wrapWidth=760,
         alignText="left",
-        pos=(0, 40),
+        pos=(-360, 80),
     )
+
+    heatmaps = []
+    labels = []
+    scanpaths = []
+    slots = [(380, 210), (380, -40), (380, -290)]
+    for idx, row in enumerate(test_rows[:3]):
+        pos = slots[idx]
+        hm = zrob_heatmape(row.get("samples", []), width=180, height=110)
+        heatmaps.append(
+            visual.ImageStim(
+                win,
+                image=hm,
+                units="pix",
+                size=(360, 220),
+                pos=pos,
+                interpolate=True,
+            )
+        )
+        labels.append(
+            visual.TextStim(
+                win,
+                text=(
+                    f"P{row['trial']}: {row['left_name']} vs {row['right_name']}"
+                ),
+                color=[-0.15, -0.15, -0.15],
+                height=17,
+                pos=(pos[0], pos[1] + 130),
+                wrapWidth=420,
+            )
+        )
+
+        samples = row.get("samples", [])
+        if samples:
+            step = max(1, len(samples) // 24)
+            pts = []
+            for s in samples[::step]:
+                x_local = ((s["x"] + SCREEN_WIDTH / 2) / SCREEN_WIDTH - 0.5) * 360 + pos[0]
+                y_local = (0.5 - (s["y"] + SCREEN_HEIGHT / 2) / SCREEN_HEIGHT) * 220 + pos[1]
+                pts.append((x_local, y_local))
+
+            if len(pts) > 1:
+                scanpaths.append(
+                    visual.ShapeStim(
+                        win,
+                        vertices=pts,
+                        closeShape=False,
+                        lineColor="cyan",
+                        lineWidth=1.6,
+                    )
+                )
+                scanpaths.append(
+                    visual.Circle(
+                        win,
+                        radius=5,
+                        pos=pts[-1],
+                        fillColor="yellow",
+                        lineColor="black",
+                        lineWidth=1.0,
+                    )
+                )
 
     while True:
         reveal_cursor_if_moved(win)
         panel.draw()
         txt.draw()
+        for hm in heatmaps:
+            hm.draw()
+        for lbl in labels:
+            lbl.draw()
+        for path in scanpaths:
+            path.draw()
         win.flip()
         keys = event.getKeys(["space", "escape"])
         if keys:
@@ -734,7 +838,7 @@ def pokaz_wstep(win):
     return "escape" not in keys
 
 
-def pokaz_predykcje(win, pred_label, pred_prob, true_label, evidence):
+def pokaz_predykcje(win, pred_label, pred_prob, true_label, evidence, left_name, right_name):
     color = "lime" if pred_label == true_label else "orange"
     evidence_lines = []
     for idx, ev in enumerate(evidence[:3], start=1):
@@ -742,12 +846,16 @@ def pokaz_predykcje(win, pred_label, pred_prob, true_label, evidence):
             f"{idx}. {ev['name']}: {ev['value']:.2f} -> {ev['direction']}"
         )
 
+    pred_text = "KLAMSTWO" if pred_label == 1 else "PRAWDA"
+    true_text = "KLAMSTWO" if true_label == 1 else "PRAWDA"
+    context_line = f"Wolisz {left_name} od {right_name}? {pred_text}."
+
     txt = visual.TextStim(
         win,
         text=(
-            f"Model przewidzial: {'KLAMSTWO' if pred_label == 1 else 'PRAWDA'}\n"
+            f"{context_line}\n"
             f"Prawdopodobienstwo klamstwa: {100.0 * pred_prob:.1f}%\n"
-            f"Twoja etykieta: {'KLAMSTWO' if true_label == 1 else 'PRAWDA'}\n\n"
+            f"Twoja etykieta: {true_text}\n\n"
             "Dowody z gaze data:\n"
             + "\n".join(evidence_lines)
             + "\n\nSPACJA = dalej"
@@ -847,7 +955,15 @@ def main():
             win.close()
             return
         test_rows.append(r)
-        pokaz_predykcje(win, r["pred_label"], r["pred_prob"], r["label"], r["evidence"])
+        pokaz_predykcje(
+            win,
+            r["pred_label"],
+            r["pred_prob"],
+            r["label"],
+            r["evidence"],
+            r["left_name"],
+            r["right_name"],
+        )
 
     collector.stop()
 
