@@ -254,7 +254,7 @@ def run_calibration(win, eyetracker):
 # ============================================================================
 # 5. STYMULY
 # ============================================================================
-BODZCE = [
+TRAIN_BODZCE = [
     ("Samochod sportowy", [0.7, 0.1, 0.1]),
     ("Dom nad jeziorem", [0.1, 0.4, 0.7]),
     ("Wakacje Bali", [0.8, 0.45, 0.1]),
@@ -264,13 +264,25 @@ BODZCE = [
 ]
 
 
-def losuj_triale(n):
+FOLLOWUP_BODZCE = [
+    ("Barszcz z uszkami", [0.65, 0.12, 0.12]),
+    ("Pierogi z kapusta i grzybami", [0.85, 0.74, 0.48]),
+    ("Karp smazony", [0.32, 0.48, 0.72]),
+    ("Kutia", [0.68, 0.52, 0.18]),
+    ("Makowiec", [0.42, 0.26, 0.16]),
+    ("Sledzie w oleju", [0.36, 0.44, 0.56]),
+    ("Kompot z suszu", [0.58, 0.34, 0.18]),
+    ("Kapusta z grochem", [0.36, 0.56, 0.24]),
+]
+
+
+def losuj_triale(n, bodzce):
     trials = []
     for idx in range(n):
-        left = random.choice(BODZCE)
-        right = random.choice(BODZCE)
+        left = random.choice(bodzce)
+        right = random.choice(bodzce)
         while right[0] == left[0]:
-            right = random.choice(BODZCE)
+            right = random.choice(bodzce)
 
         trials.append(
             {
@@ -681,9 +693,11 @@ def pokaz_raport(win, train_rows, test_rows, model):
         "RAPORT: WYKRYWACZ KLAMSTW (PROTOTYP)",
         "",
         f"Proby treningowe: {len(train_rows)}",
-        f"Proby follow-up: {len(test_rows)}",
-        f"Skutecznosc modelu (follow-up): {m['acc']:.1f}%",
+        f"Proby follow-up (potrawy wigilijne): {len(test_rows)}",
+        f"Skutecznosc modelu dla nowych bodzcow: {m['acc']:.1f}%",
         f"Macierz pomylek: TP={m['tp']}  TN={m['tn']}  FP={m['fp']}  FN={m['fn']}",
+        "",
+        "Model przewiduje etykiete intencji z gaze data, nie znaczenie pytania samo w sobie.",
         "",
         "Najmocniejsze cechy wzroku dla tej osoby:",
     ]
@@ -920,7 +934,7 @@ def pokaz_wstep(win):
             "Nastepnie deklaruj intencje strzalka:\n"
             "LEWO = klamie, PRAWO = mowie prawde.\n\n"
             "Faza 1: model uczy sie Twojego wzorca z danych wzroku.\n"
-            "Faza 2: model sam przewiduje, czy klamiesz.\n\n"
+            "Faza 2: model testuje ten wzorzec na nowych bodzcach: potrawach wigilijnych.\n\n"
             "Czas calkowity: okolo 3-4 min\n"
             "SPACJA = start, ESC = wyjscie"
         ),
@@ -949,7 +963,7 @@ def pokaz_predykcje(win, pred_label, pred_prob, true_label, evidence, left_name,
     txt = visual.TextStim(
         win,
         text=(
-            f"{context_line}\n"
+            f"Na podstawie gaze data model ocenia: {context_line}\n"
             f"Prawdopodobienstwo klamstwa: {100.0 * pred_prob:.1f}%\n"
             f"Twoja etykieta: {true_text}\n\n"
             "Dowody z gaze data:\n"
@@ -1021,8 +1035,8 @@ def main():
     collector = GazeCollector(eyetracker, win=win)
     collector.start()
 
-    train_trials = losuj_triale(N_TRAIN)
-    test_trials = losuj_triale(N_TEST)
+    train_trials = losuj_triale(N_TRAIN, TRAIN_BODZCE)
+    test_trials = losuj_triale(N_TEST, FOLLOWUP_BODZCE)
 
     train_rows = []
     for i, t in enumerate(train_trials, start=1):
