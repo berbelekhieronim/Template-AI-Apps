@@ -12,32 +12,59 @@ Structure for students:
   4. Clean shutdown
 
 Press  ESC  at any time to quit.
+
+---------------------------------------------------------------------
+DEV_MODE  (set below)
+---------------------------------------------------------------------
+True  → runs on any laptop with no eye tracker.
+        Your mouse cursor acts as the simulated gaze point.
+        Use this while building your app.
+
+False → real Tobii X3-120 mode.  Only works on the teacher's PC
+        that has the tracker connected.  Set this to False before
+        handing your code to the teacher for testing.
+---------------------------------------------------------------------
 """
 
 import sys
 import time
+import math
+import random
 from pathlib import Path
 
 # ============================================================================
-# 1. SDK PATH  –  must come before any tobii_research import
+# 0. DEV_MODE  ← STUDENTS: change this flag
 # ============================================================================
-HERE = Path(__file__).resolve().parent        # …/AI Template App/
+DEV_MODE = True   # True = mouse simulation  |  False = real Tobii tracker
+
+# ============================================================================
+# 1. SDK PATH  –  only needed when DEV_MODE is False
+# ============================================================================
+HERE     = Path(__file__).resolve().parent        # …/AI Template App/
 SDK_PATH = HERE.parent / "x3-120 SDK" / "64"
 
-if not SDK_PATH.exists():
-    raise FileNotFoundError(f"Tobii SDK not found at: {SDK_PATH}")
-
-sdk_str = str(SDK_PATH)
-if sdk_str not in sys.path:
-    sys.path.insert(0, sdk_str)
+if not DEV_MODE:
+    if not SDK_PATH.exists():
+        raise FileNotFoundError(f"Tobii SDK not found at: {SDK_PATH}")
+    sdk_str = str(SDK_PATH)
+    if sdk_str not in sys.path:
+        sys.path.insert(0, sdk_str)
 
 # ============================================================================
 # 2. IMPORTS
 # ============================================================================
-import tobii_research as tr
-from psychopy import visual, core, event, logging
+try:
+    from psychopy import visual, core, event, logging
+    logging.console.setLevel(logging.ERROR)
+except ImportError:
+    raise ImportError(
+        "\n\nPsychoPy is not installed.\n"
+        "Install it with:  pip install psychopy\n"
+        "Or download the standalone from https://www.psychopy.org/download.html\n"
+    )
 
-logging.console.setLevel(logging.ERROR)   # suppress PsychoPy noise
+if not DEV_MODE:
+    import tobii_research as tr
 
 # ============================================================================
 # 3. CONSTANTS  –  tweak these to change behaviour
@@ -74,8 +101,13 @@ def norm_to_pix(nx, ny):
 def connect_eyetracker():
     """
     Discover the first available Tobii eye tracker and return it.
-    Returns None if no device is found.
+    In DEV_MODE returns a sentinel string so the rest of the app still runs.
+    Returns None if no real device is found (real mode only).
     """
+    if DEV_MODE:
+        print("[AI TEMPLATE] DEV_MODE: skipping eye tracker  – mouse will simulate gaze.")
+        return "DEV_MODE"
+
     print("\n[AI TEMPLATE] Searching for eye tracker...")
     trackers = tr.find_all_eyetrackers()
 
@@ -99,21 +131,32 @@ class GazeCollector:
     """
     Subscribes to the Tobii gaze stream and keeps the most recent sample.
 
+    In DEV_MODE the mouse cursor drives the simulated gaze position so
+    students can develop and test without a physical eye tracker.
+
     Usage:
-        gc = GazeCollector(eyetracker)
+        gc = GazeCollector(eyetracker, win)
         gc.start()
         x, y = gc.get_gaze_pix()   # current gaze in PsychoPy pixels
         gc.stop()
     """
 
-    def __init__(self, eyetracker):
+    def __init__(self, eyetracker, win=None):
         self._et      = eyetracker
-        self._last    = None          # most recent raw gaze dict
+        self._win     = win           # needed for mouse in DEV_MODE
+        self._last    = None
+        self._mouse   = None
         self.active   = False
 
     # ---- subscription lifecycle ----
 
     def start(self):
+        if DEV_MODE:
+            self._mouse = event.Mouse(win=self._win)
+            self.active = True
+            print("[AI TEMPLATE] DEV_MODE gaze stream started (mouse simulation).")
+            return
+
         self._et.subscribe_to(
             tr.EYETRACKER_GAZE_DATA,
             self._callback,
@@ -123,11 +166,12 @@ class GazeCollector:
         print("[AI TEMPLATE] Gaze stream started.")
 
     def stop(self):
-        self._et.unsubscribe_from(tr.EYETRACKER_GAZE_DATA, self._callback)
+        if not DEV_MODE and self.active:
+            self._et.unsubscribe_from(tr.EYETRACKER_GAZE_DATA, self._callback)
         self.active = False
         print("[AI TEMPLATE] Gaze stream stopped.")
 
-    # ---- callback (runs in Tobii thread) ----
+    # ---- callback (runs in Tobii thread, real mode only) ----
 
     def _callback(self, data):
         self._last = data
@@ -136,9 +180,18 @@ class GazeCollector:
 
     def get_gaze_norm(self):
         """
-        Return averaged gaze position as normalised (x, y) or None if invalid.
-        Averages left and right eye; falls back to whichever eye is valid.
+        Return averaged gaze as normalised (x, y) in [0,1] or None.
+        DEV_MODE: derived from mouse position.
+        Real mode: averaged from left + right eye validity.
         """
+        if DEV_MODE:
+            if self._mouse is None:
+                return None
+            mx, my = self._mouse.getPos()   # PsychoPy pixels
+            nx = (mx / SCREEN_WIDTH)  + 0.5
+            ny = 0.5 - (my / SCREEN_HEIGHT)
+            return nx, ny
+
         d = self._last
         if d is None:
             return None
@@ -170,7 +223,7 @@ class GazeCollector:
 
 
 # ============================================================================
-# 7. CALIBRATION  –  5-point screen-based
+# 7. CALIBRATION  –  5-point screen-based (skipped in DEV_MODE)
 # ============================================================================
 CALIBRATION_POINTS = [
     (0.5,  0.5),   # centre
@@ -183,8 +236,20 @@ CALIBRATION_POINTS = [
 def run_calibration(win, eyetracker):
     """
     Run a 5-point screen-based calibration.
+    In DEV_MODE shows a message and skips straight to the experiment.
     Returns True on success, False on failure.
     """
+    if DEV_MODE:
+        msg = visual.TextStim(
+            win,
+            text="DEV MODE – calibration skipped.\n\nYour mouse cursor simulates gaze.\n\nPress SPACE to start.",
+            height=30, color="yellow", wrapWidth=900
+        )
+        msg.draw()
+        win.flip()
+        event.waitKeys(keyList=["space", "escape"])
+        return True
+
     calibration = tr.ScreenBasedCalibration(eyetracker)
     calibration.enter_calibration_mode()
     print("[AI TEMPLATE] Calibration mode entered.")
@@ -202,7 +267,6 @@ def run_calibration(win, eyetracker):
         height=28, color="white", pos=(0, 0)
     )
 
-    # --- wait for SPACE ---
     instruction.draw()
     win.flip()
     event.waitKeys(keyList=["space", "escape"])
@@ -210,12 +274,10 @@ def run_calibration(win, eyetracker):
         calibration.leave_calibration_mode()
         return False
 
-    # --- collect samples at each point ---
     for nx, ny in CALIBRATION_POINTS:
         px, py = norm_to_pix(nx, ny)
 
-        # Animate dot shrinking so participant knows when to fixate
-        for frame in range(60):              # ~1 s at 60 fps
+        for frame in range(60):
             dot.radius = CAL_DOT_RADIUS * (1 - frame / 80)
             dot.pos    = (px, py)
             inner.pos  = (px, py)
@@ -225,7 +287,6 @@ def run_calibration(win, eyetracker):
 
         calibration.collect_data(nx, ny)
 
-        # Flash green to confirm
         dot.fillColor = CAL_DONE_COLOR
         dot.radius    = CAL_DOT_RADIUS
         dot.draw()
@@ -239,7 +300,6 @@ def run_calibration(win, eyetracker):
             calibration.leave_calibration_mode()
             return False
 
-    # --- compute result ---
     result = calibration.compute_and_apply()
     calibration.leave_calibration_mode()
 
@@ -276,12 +336,19 @@ def run_gaze_demo(win, gaze_collector):
         lineColor=None,
         opacity=0.8
     )
+    mode_label = visual.TextStim(
+        win,
+        text="DEV MODE – mouse = gaze" if DEV_MODE else "LIVE – Tobii X3-120",
+        height=20,
+        color="yellow" if DEV_MODE else "lime",
+        pos=(-SCREEN_WIDTH // 2 + 10, SCREEN_HEIGHT // 2 - 20),
+        anchorHoriz="left", anchorVert="top"
+    )
     instructions = visual.TextStim(
         win,
-        text="Gaze tracking active\nESC to quit",
+        text="Gaze tracking active  |  ESC to quit",
         height=22, color="white",
-        pos=(0, -SCREEN_HEIGHT // 2 + 40),
-        anchorVert="bottom"
+        pos=(0, -SCREEN_HEIGHT // 2 + 30),
     )
     no_signal = visual.TextStim(
         win, text="No gaze signal", height=22, color="orange"
@@ -297,6 +364,7 @@ def run_gaze_demo(win, gaze_collector):
 
         win.clearBuffer()
         instructions.draw()
+        mode_label.draw()
 
         if gaze_pix is not None:
             cursor.pos = gaze_pix
@@ -313,7 +381,6 @@ def run_gaze_demo(win, gaze_collector):
 # 9. ENTRY POINT
 # ============================================================================
 def main():
-    # --- connect ---
     eyetracker = connect_eyetracker()
 
     win = visual.Window(
@@ -336,14 +403,12 @@ def main():
         win.close()
         return
 
-    # --- calibrate ---
     calibrated = run_calibration(win, eyetracker)
     if not calibrated:
         win.close()
         return
 
-    # --- stream gaze ---
-    gaze_collector = GazeCollector(eyetracker)
+    gaze_collector = GazeCollector(eyetracker, win)
     run_gaze_demo(win, gaze_collector)
 
     win.close()
