@@ -101,29 +101,31 @@ PRODUKTY = [
 SMAKI = ["kakao", "orzech", "wanilia", "kokos", "truskawka", "miod"]
 
 SKLADNIKI_ZLOZONE = [
-    "hydrolizat izolatu serwatki",
-    "maltodekstryna",
-    "syrop glukozowo-fruktozowy",
-    "emulgator lecytyny sojowej",
-    "regulator kwasowosci",
-    "stabilizator karagen",
-    "substancja slodzaca sukraloza",
-    "fosforan dipotasowy",
-    "aromat identyczny z naturalnym",
-    "koncentrat bialka mlecznego",
+    "izolat bialek serwatkowych",
+    "frakcjonowany blonnik akacjowy",
+    "mieszanka tokoferoli",
+    "emulgator lecytyny slonecznikowej",
+    "koncentrat bialek mleka",
+    "hydrolizowany kolagen rybi",
+    "inulina z cykorii",
+    "regulator kwasowosci: cytryniany sodu",
+    "ekstrakt rozmarynu",
+    "stabilizator pektyny",
 ]
 
 SKLADNIKI_PROSTE = [
     "platki owsiane",
-    "orzechy",
+    "orzechy ziemne",
     "miod",
     "daktyle",
     "kakao",
     "rodzynki",
     "jablko suszone",
     "migdaly",
-    "pestki dyni",
+    "pestki slonecznika",
     "cynamon",
+    "olej rzepakowy",
+    "sol morska",
 ]
 
 KOLORY_PRODUKTU = [
@@ -312,7 +314,6 @@ def generuj_probe(n_trials):
                 "kolor": kolor,
                 "left_ingredients": left_ing,
                 "right_ingredients": right_ing,
-                "healthy_side": "right",
             }
         )
     return proby
@@ -435,7 +436,7 @@ def stworz_stymulusy_proby(win, trial):
 # ============================================================================
 # 7. ANALIZA GAZE
 # ============================================================================
-def policz_metryki_z_gaze(samples, aoi, choice_side, rt, healthy_side):
+def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
     if len(samples) < 2:
         return {
             "left_total": 0.0,
@@ -446,8 +447,6 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt, healthy_side):
             "right_ing": 0.0,
             "first_fix_side": "brak",
             "choice": choice_side,
-            "healthy_side": healthy_side,
-            "correct": int(choice_side == healthy_side),
             "rt": rt,
             "samples": samples,
         }
@@ -495,8 +494,6 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt, healthy_side):
             "right_total": right_total,
             "first_fix_side": first_fix_side,
             "choice": choice_side,
-            "healthy_side": healthy_side,
-            "correct": int(choice_side == healthy_side),
             "rt": rt,
             "samples": samples,
         }
@@ -533,21 +530,23 @@ def zrob_heatmape(samples, width=192, height=108):
             + np.roll(img, -1, axis=1)
         ) / 5.0
 
+    # Mocniejsze podbicie kontrastu, aby hotspoty byly bardziej wyrazne
+    img = np.power(img, 0.6)
+
     m = np.max(img)
     if m > 0:
         img = img / m
 
     rgb = np.zeros((height, width, 3), dtype=np.float32)
-    rgb[:, :, 0] = img
-    rgb[:, :, 1] = np.clip(img * 1.2 - 0.15, 0.0, 1.0)
-    rgb[:, :, 2] = np.clip(img * 0.2, 0.0, 0.3)
+    rgb[:, :, 0] = np.clip(img * 1.35, 0.0, 1.0)
+    rgb[:, :, 1] = np.clip(img * 0.75, 0.0, 1.0)
+    rgb[:, :, 2] = np.clip(img * 0.08, 0.0, 0.5)
     return rgb
 
 
 def analiza_koncowa(wyniki):
     if not wyniki:
         return {
-            "accuracy": 0.0,
             "mean_rt": 0.0,
             "right_choice_rate": 0.0,
             "look_choice_match": 0.0,
@@ -556,7 +555,6 @@ def analiza_koncowa(wyniki):
         }
 
     n = len(wyniki)
-    poprawne = sum(w["correct"] for w in wyniki)
     sr_rt = float(np.mean([w["rt"] for w in wyniki]))
     right_choices = sum(1 for w in wyniki if w["choice"] == "right")
     first_fix_right = sum(1 for w in wyniki if w["first_fix_side"] == "right")
@@ -594,7 +592,6 @@ def analiza_koncowa(wyniki):
     )[:3]
 
     return {
-        "accuracy": 100.0 * poprawne / n,
         "mean_rt": sr_rt,
         "right_choice_rate": 100.0 * right_choices / n,
         "look_choice_match": 100.0 * zgodnosc_spojrzenie_wybor / n,
@@ -617,8 +614,9 @@ def ekran_startowy(win):
             "APP 1: ZDROWY WYBOR\n\n"
             "Na ekranie pojawia sie 5 par produktow (lewa i prawa strona).\n"
             "Lewa strona ma bardziej zlozone nazwy skladnikow, prawa prostsze.\n"
-            "Wybierz strzalka, ktora opcja jest zdrowsza.\n\n"
-            "LEWO/PRAWO = odpowiedz, ESC = wyjscie, SPACJA = start"
+            "Wybierz strzalka, ktora opcja WG CIEBIE jest zdrowsza.\n"
+            "To badanie preferencji - nie ma poprawnych ani blednych odpowiedzi.\n\n"
+            "LEWO/PRAWO = odpowiedz, ESC = wyjscie, SPACJA = start badania"
         ),
         color="white",
         height=30,
@@ -630,18 +628,16 @@ def ekran_startowy(win):
     return "escape" not in keys
 
 
-def feedback_po_probie(win, trial_idx, choice_side, healthy_side, rt):
-    poprawne = choice_side == healthy_side
+def feedback_po_probie(win, trial_idx, choice_side, rt):
     msg = (
         f"Proba {trial_idx}/{N_TRIALS}\n"
-        f"Wybor: {'LEWO' if choice_side == 'left' else 'PRAWO'}\n"
-        f"Poprawnosc: {'TAK' if poprawne else 'NIE'}\n"
+        f"Wybor zapisany: {'LEWO' if choice_side == 'left' else 'PRAWO'}\n"
         f"Czas reakcji: {rt:.2f} s"
     )
-    stim = visual.TextStim(win, text=msg, color=("lime" if poprawne else "orange"), height=34)
+    stim = visual.TextStim(win, text=msg, color="lightgray", height=34)
     stim.draw()
     win.flip()
-    core.wait(0.8)
+    core.wait(0.35)
 
 
 def ekran_raportu(win, wyniki, podsumowanie):
@@ -656,11 +652,12 @@ def ekran_raportu(win, wyniki, podsumowanie):
     )
 
     summary_lines = [
-        f"Skutecznosc (wybor zdrowej opcji): {podsumowanie['accuracy']:.1f}%",
+        "To badanie nie posiada poprawnych odpowiedzi.",
         f"Sredni czas reakcji: {podsumowanie['mean_rt']:.2f} s",
         f"Odsetek wyborow PRAWO: {podsumowanie['right_choice_rate']:.1f}%",
         f"Zgodnosc: dluzsze patrzenie -> wybrana strona: {podsumowanie['look_choice_match']:.1f}%",
         f"Pierwsza fiksacja na PRAWO: {podsumowanie['first_fix_right']:.1f}%",
+        "Czerwony hotspot = najwiecej fiksacji (najczestsze patrzenie).",
         "",
         "Najsilniejsze czynniki decyzji:",
     ]
@@ -680,6 +677,7 @@ def ekran_raportu(win, wyniki, podsumowanie):
 
     labels = []
     images = []
+    gaze_markers = []
     slots = [(-250, -120), (100, -120), (450, -120), (-75, -360), (275, -360)]
 
     for i, hm in enumerate(heatmaps):
@@ -704,6 +702,50 @@ def ekran_raportu(win, wyniki, podsumowanie):
             )
         )
 
+        # Dodatkowe znaczniki: tor spojrzen + ostatnia fiksacja przed decyzja
+        samples = wyniki[i]["samples"]
+        if samples:
+            # Redukcja liczby punktow dla czytelnosci (max ~35 punktow)
+            step = max(1, len(samples) // 35)
+            sampled = samples[::step]
+            pts = []
+            for s in sampled:
+                x_local = ((s["x"] + SCREEN_WIDTH / 2) / SCREEN_WIDTH - 0.5) * 300 + pos[0]
+                y_local = (0.5 - (s["y"] + SCREEN_HEIGHT / 2) / SCREEN_HEIGHT) * 180 + pos[1]
+                pts.append((x_local, y_local))
+
+            if len(pts) > 1:
+                gaze_markers.append(
+                    visual.ShapeStim(
+                        win,
+                        vertices=pts,
+                        closeShape=False,
+                        lineColor="cyan",
+                        lineWidth=1.8,
+                    )
+                )
+
+            last = pts[-1]
+            gaze_markers.append(
+                visual.Circle(
+                    win,
+                    radius=6,
+                    pos=last,
+                    fillColor="yellow",
+                    lineColor="black",
+                    lineWidth=1.0,
+                )
+            )
+            labels.append(
+                visual.TextStim(
+                    win,
+                    text="zolta kropka = wzrok przy decyzji",
+                    color="yellow",
+                    height=14,
+                    pos=(pos[0], pos[1] - 104),
+                )
+            )
+
     footer = visual.TextStim(
         win,
         text="SPACJA = zakoncz | ESC = wyjscie",
@@ -719,6 +761,8 @@ def ekran_raportu(win, wyniki, podsumowanie):
             stim.draw()
         for lbl in labels:
             lbl.draw()
+        for marker in gaze_markers:
+            marker.draw()
         footer.draw()
         win.flip()
 
@@ -733,8 +777,6 @@ def zapisz_csv(wyniki, podsumowanie):
     fields = [
         "trial",
         "choice",
-        "healthy_side",
-        "correct",
         "rt",
         "left_total",
         "right_total",
@@ -755,7 +797,6 @@ def zapisz_csv(wyniki, podsumowanie):
 
         w.writerow({})
         w.writerow({"trial": "PODSUMOWANIE"})
-        w.writerow({"trial": "skutecznosc_%", "choice": f"{podsumowanie['accuracy']:.2f}"})
         w.writerow({"trial": "sredni_rt_s", "choice": f"{podsumowanie['mean_rt']:.3f}"})
         w.writerow({"trial": "wybor_prawo_%", "choice": f"{podsumowanie['right_choice_rate']:.2f}"})
         w.writerow({"trial": "zgodnosc_spojrzenie_wybor_%", "choice": f"{podsumowanie['look_choice_match']:.2f}"})
@@ -797,7 +838,7 @@ def run_trial(win, collector, trial):
     if choice is None:
         choice = "left" if random.random() < 0.5 else "right"
 
-    wynik = policz_metryki_z_gaze(samples, aoi, choice, rt, trial["healthy_side"])
+    wynik = policz_metryki_z_gaze(samples, aoi, choice, rt)
     return wynik
 
 
@@ -832,10 +873,6 @@ def main():
         win.close()
         return
 
-    if not ekran_startowy(win):
-        win.close()
-        return
-
     if not run_calibration(win, et):
         fail = visual.TextStim(
             win,
@@ -846,6 +883,10 @@ def main():
         fail.draw()
         win.flip()
         core.wait(1.5)
+        win.close()
+        return
+
+    if not ekran_startowy(win):
         win.close()
         return
 
@@ -867,7 +908,6 @@ def main():
             win,
             trial_idx=trial["trial"],
             choice_side=wynik["choice"],
-            healthy_side=trial["healthy_side"],
             rt=wynik["rt"],
         )
 
