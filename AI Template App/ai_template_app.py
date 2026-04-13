@@ -85,73 +85,83 @@ GAZE_CURSOR_COLOR  = [1.0, 0.2, 0.2]   # red-ish
 # ============================================================================
 # 4. HELPERS  –  coordinate conversion
 # ============================================================================
-def norm_to_pix(nx, ny):
-    """
-    Convert Tobii normalised display-area coords (0–1, origin top-left)
-    to PsychoPy pixel coords (origin centre, y up).
-    """
-    px = (nx - 0.5) * SCREEN_WIDTH
-    py = (0.5 - ny) * SCREEN_HEIGHT
-    return px, py
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+AI TEMPLATE APP
+===============
+Eye Tracking starter template using Tobii X3-120 + PsychoPy.
 
+Structure for students:
+  1. Mode selection (Dev / Teacher) at startup
+  2. SDK setup & device connection
+  3. 5-point screen-based calibration
+  4. Gaze data streaming with live cursor
+  5. Clean shutdown
 
-# ============================================================================
-# 5. DEVICE CONNECTION
-# ============================================================================
-def connect_eyetracker():
-    """
-    Discover the first available Tobii eye tracker and return it.
-    In DEV_MODE returns a sentinel string so the rest of the app still runs.
-    Returns None if no real device is found (real mode only).
-    """
-    if DEV_MODE:
-        print("[AI TEMPLATE] DEV_MODE: skipping eye tracker  – mouse will simulate gaze.")
-        return "DEV_MODE"
+Press  ESC  at any time to quit.
+"""
 
-    print("\n[AI TEMPLATE] Searching for eye tracker...")
-    trackers = tr.find_all_eyetrackers()
-
-    if not trackers:
-        print("[AI TEMPLATE] No eye tracker found.")
-        return None
-
-    et = trackers[0]
-    print(f"[AI TEMPLATE] Connected  : {et.model}")
-    print(f"[AI TEMPLATE] Serial     : {et.serial_number}")
-    print(f"[AI TEMPLATE] Address    : {et.address}")
-    print(f"[AI TEMPLATE] Frequencies: {et.get_all_gaze_output_frequencies()} Hz")
-
-    return et
-
+import sys
+import time
+import math
+import random
+from pathlib import Path
 
 # ============================================================================
-# 6. GAZE COLLECTOR
+# 0. STARTUP MODE SELECTION
 # ============================================================================
-class GazeCollector:
-    """
-    Subscribes to the Tobii gaze stream and keeps the most recent sample.
+HERE     = Path(__file__).resolve().parent
+SDK_PATH = HERE.parent / "x3-120 SDK" / "64"
 
-    In DEV_MODE the mouse cursor drives the simulated gaze position so
-    students can develop and test without a physical eye tracker.
+print()
+print("=" * 50)
+print("        AI TEMPLATE APP - Mode Selection")
+print("=" * 50)
+print()
+print("  [1]  DEV MODE    - no eye tracker needed")
+print("                     mouse cursor = gaze")
+print()
+print("  [2]  TEACHER MODE - real Tobii X3-120")
+print("                     tracker must be plugged in")
+print()
 
-    Usage:
-        gc = GazeCollector(eyetracker, win)
-        gc.start()
-        x, y = gc.get_gaze_pix()   # current gaze in PsychoPy pixels
-        gc.stop()
-    """
+while True:
+    choice = input("Select mode (1 or 2): ").strip()
+    if choice in ("1", "2"):
+        break
+    print("  Please enter 1 or 2.")
 
-    def __init__(self, eyetracker, win=None):
-        self._et      = eyetracker
-        self._win     = win           # needed for mouse in DEV_MODE
-        self._last    = None
-        self._mouse   = None
-        self.active   = False
+DEV_MODE = (choice == "1")
+print()
+print("  Running in: " + ("DEV MODE (mouse simulation)" if DEV_MODE else "TEACHER MODE (real tracker)"))
+print()
 
-    # ---- subscription lifecycle ----
+# ============================================================================
+# 1. SDK PATH  -  only needed in Teacher Mode
+# ============================================================================
+if not DEV_MODE:
+    if not SDK_PATH.exists():
+        raise FileNotFoundError(f"Tobii SDK not found at: {SDK_PATH}")
+    sdk_str = str(SDK_PATH)
+    if sdk_str not in sys.path:
+        sys.path.insert(0, sdk_str)
 
-    def start(self):
-        if DEV_MODE:
+# ============================================================================
+# 2. IMPORTS
+# ============================================================================
+try:
+    from psychopy import visual, core, event, logging
+    logging.console.setLevel(logging.ERROR)
+except ImportError:
+    raise ImportError(
+        "\n\nPsychoPy is not installed.\n"
+        "Install it with:  pip install psychopy\n"
+        "Or download the standalone from https://www.psychopy.org/download.html\n"
+    )
+
+if not DEV_MODE:
+    import tobii_research as tr
             self._mouse = event.Mouse(win=self._win)
             self.active = True
             print("[AI TEMPLATE] DEV_MODE gaze stream started (mouse simulation).")
