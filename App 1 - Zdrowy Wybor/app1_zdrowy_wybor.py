@@ -92,11 +92,11 @@ ING_LINE_STEP = 36
 # 3. BAZA TRESCI
 # ============================================================================
 PRODUKTY = [
-    "Baton proteinowy",
-    "Baton owsiany",
-    "Przekaska fitness",
-    "Baton energetyczny",
-    "Baton zbozowy",
+    "Skalpel",
+    "Tlusty Misiu",
+    "Detoxer",
+    "ZenZen",
+    "bAIton",
 ]
 
 SMAKI = ["kakao", "orzech", "wanilia", "kokos", "truskawka", "miod"]
