@@ -224,7 +224,8 @@ def pokaz_instrukcje(win):
             "SPACJA = dalej, ESC = wyjscie"
         ),
         color="white",
-        height=31,
+        height=27,
+        font="Verdana",
         wrapWidth=1450,
     )
     txt.draw()
@@ -234,6 +235,15 @@ def pokaz_instrukcje(win):
 
 
 def ekran_sukcesu(win):
+    panel = visual.Rect(
+        win,
+        width=1500,
+        height=560,
+        pos=(0, 0),
+        fillColor=[-0.82, -0.92, -0.82],
+        lineColor=[-0.35, 0.2, -0.35],
+        lineWidth=2,
+    )
     txt = visual.TextStim(
         win,
         text=(
@@ -244,12 +254,14 @@ def ekran_sukcesu(win):
             "na uslugi z zakresu dbania o zdrowie psychiczne.\n\n"
             "SPACJA = zakoncz"
         ),
-        color="lime",
-        height=38,
+        color=[-0.55, 0.25, -0.55],
+        height=34,
+        font="Verdana",
         wrapWidth=1500,
     )
 
     while True:
+        panel.draw()
         txt.draw()
         win.flip()
         keys = event.getKeys(["space", "escape"])
@@ -264,8 +276,8 @@ def run_browser_mockup(win, collector):
         width=1680,
         height=940,
         pos=(0, 0),
-        fillColor=[-0.94, -0.94, -0.94],
-        lineColor=[0.25, 0.25, 0.25],
+        fillColor=[-0.96, -0.95, -0.93],
+        lineColor=[0.1, 0.1, 0.1],
         lineWidth=2,
     )
 
@@ -274,8 +286,8 @@ def run_browser_mockup(win, collector):
         width=1680,
         height=64,
         pos=(0, 438),
-        fillColor=[-0.72, -0.72, -0.72],
-        lineColor=[-0.72, -0.72, -0.72],
+        fillColor=[-0.62, -0.62, -0.62],
+        lineColor=[-0.62, -0.62, -0.62],
     )
 
     address = visual.Rect(
@@ -291,7 +303,8 @@ def run_browser_mockup(win, collector):
         win,
         text="https://luksus-sale.example/gucci-torebka",
         color=[-0.2, -0.2, -0.2],
-        height=21,
+        height=18,
+        font="Verdana",
         pos=(120, 438),
     )
 
@@ -310,7 +323,8 @@ def run_browser_mockup(win, collector):
         win,
         text="PROMOCJA -70%",
         color="white",
-        height=66,
+        height=58,
+        font="Verdana",
         pos=(0, 250),
     )
 
@@ -318,7 +332,8 @@ def run_browser_mockup(win, collector):
         win,
         text="Torebka Gucci - teraz tylko 2999 zl",
         color="white",
-        height=44,
+        height=36,
+        font="Verdana",
         pos=(0, 165),
     )
 
@@ -337,7 +352,8 @@ def run_browser_mockup(win, collector):
         win,
         text="Dane platnosci:",
         color=[-0.2, -0.2, -0.2],
-        height=30,
+        height=24,
+        font="Verdana",
         pos=(-520, -65),
         alignText="left",
     )
@@ -346,7 +362,8 @@ def run_browser_mockup(win, collector):
         win,
         text="Numer karty:",
         color=[-0.25, -0.25, -0.25],
-        height=24,
+        height=20,
+        font="Verdana",
         pos=(-520, -130),
         alignText="left",
     )
@@ -355,7 +372,8 @@ def run_browser_mockup(win, collector):
         win,
         text="4242 1111 8888 5555",
         color=[-0.1, -0.1, -0.1],
-        height=28,
+        height=23,
+        font="Verdana",
         pos=(-220, -130),
         alignText="left",
     )
@@ -364,7 +382,8 @@ def run_browser_mockup(win, collector):
         win,
         text="CVV:",
         color=[-0.25, -0.25, -0.25],
-        height=24,
+        height=20,
+        font="Verdana",
         pos=(-520, -190),
         alignText="left",
     )
@@ -373,7 +392,8 @@ def run_browser_mockup(win, collector):
         win,
         text="731",
         color=[-0.1, -0.1, -0.1],
-        height=28,
+        height=23,
+        font="Verdana",
         pos=(-420, -190),
         alignText="left",
     )
@@ -382,7 +402,8 @@ def run_browser_mockup(win, collector):
         win,
         text="Waznosc:",
         color=[-0.25, -0.25, -0.25],
-        height=24,
+        height=20,
+        font="Verdana",
         pos=(-250, -190),
         alignText="left",
     )
@@ -391,7 +412,8 @@ def run_browser_mockup(win, collector):
         win,
         text="03/29",
         color=[-0.1, -0.1, -0.1],
-        height=28,
+        height=23,
+        font="Verdana",
         pos=(-120, -190),
         alignText="left",
     )
@@ -400,20 +422,33 @@ def run_browser_mockup(win, collector):
     button_w = 360
     button_h = 110
     button_pos = (470, -170)
+    aoi_scale = 1.2
+    aoi_half_w = (button_w * aoi_scale) / 2
+    aoi_half_h = (button_h * aoi_scale) / 2
     button_rect = [
-        button_pos[0] - button_w / 2,
-        button_pos[0] + button_w / 2,
-        button_pos[1] - button_h / 2,
-        button_pos[1] + button_h / 2,
+        button_pos[0] - aoi_half_w,
+        button_pos[0] + aoi_half_w,
+        button_pos[1] - aoi_half_h,
+        button_pos[1] + aoi_half_h,
     ]
+
+    buy_button_shadow = visual.Rect(
+        win,
+        width=button_w,
+        height=button_h,
+        pos=(button_pos[0] + 6, button_pos[1] - 6),
+        fillColor=[0.18, -0.1, -0.1],
+        lineColor=None,
+        opacity=0.45,
+    )
 
     buy_button = visual.Rect(
         win,
         width=button_w,
         height=button_h,
         pos=button_pos,
-        fillColor=[0.85, 0.2, 0.2],
-        lineColor=[0.45, 0.0, 0.0],
+        fillColor=[0.95, 0.22, 0.22],
+        lineColor=[0.55, 0.05, 0.05],
         lineWidth=2,
         opacity=1.0,
     )
@@ -422,7 +457,8 @@ def run_browser_mockup(win, collector):
         win,
         text="KUP TERAZ",
         color="white",
-        height=36,
+        height=31,
+        font="Verdana",
         pos=button_pos,
         opacity=1.0,
     )
@@ -430,8 +466,9 @@ def run_browser_mockup(win, collector):
     status_text = visual.TextStim(
         win,
         text="",
-        color="yellow",
-        height=28,
+        color=[0.95, 0.78, -0.2],
+        height=23,
+        font="Verdana",
         pos=(460, -280),
         wrapWidth=480,
     )
@@ -440,7 +477,8 @@ def run_browser_mockup(win, collector):
         win,
         text="Patrz na przycisk, aby uruchomic wygaszanie impulsu zakupowego.",
         color=[-0.15, -0.15, -0.15],
-        height=23,
+        height=19,
+        font="Verdana",
         pos=(0, -365),
         wrapWidth=1450,
     )
@@ -502,6 +540,8 @@ def run_browser_mockup(win, collector):
         hint_text.draw()
 
         if alpha > 0.0:
+            buy_button_shadow.opacity = alpha * 0.45
+            buy_button_shadow.draw()
             buy_button.draw()
             buy_text.draw()
 
