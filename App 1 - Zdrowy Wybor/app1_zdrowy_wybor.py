@@ -80,12 +80,13 @@ TRIAL_TIMEOUT = 12.0
 LEFT_X = -460
 RIGHT_X = 460
 PRODUCT_Y = 170
-ING_Y = -150
+ING_Y = -70
 
 CARD_W = 480
 CARD_H = 420
 PACK_W = 280
 PACK_H = 170
+ING_LINE_STEP = 36
 
 # ============================================================================
 # 3. BAZA TRESCI
@@ -300,17 +301,31 @@ def run_calibration(win, eyetracker):
 def generuj_probe(n_trials):
     proby = []
     for idx in range(n_trials):
-        produkt = random.choice(PRODUKTY)
-        smak = random.choice(SMAKI)
+        produkt_l = random.choice(PRODUKTY)
+        smak_l = random.choice(SMAKI)
+        produkt_p = random.choice(PRODUKTY)
+        smak_p = random.choice(SMAKI)
         kolor = random.choice(KOLORY_PRODUKTU)
 
-        left_ing = random.sample(SKLADNIKI_ZLOZONE, 3)
-        right_ing = random.sample(SKLADNIKI_PROSTE, 3)
+        # Utrudnienie: obie strony maja mieszanke prostych i zlozonych skladnikow.
+        # Losujemy, po ktorej stronie bedzie przewaga skladnikow zlozonych.
+        complex_pool = random.sample(SKLADNIKI_ZLOZONE, 4)
+        simple_pool = random.sample(SKLADNIKI_PROSTE, 4)
+        if random.random() < 0.5:
+            left_ing = [complex_pool[0], complex_pool[1], simple_pool[0]]
+            right_ing = [complex_pool[2], simple_pool[1], simple_pool[2]]
+        else:
+            left_ing = [complex_pool[2], simple_pool[0], simple_pool[1]]
+            right_ing = [complex_pool[0], complex_pool[1], simple_pool[2]]
+
+        random.shuffle(left_ing)
+        random.shuffle(right_ing)
 
         proby.append(
             {
                 "trial": idx + 1,
-                "nazwa": f"{produkt} {smak}",
+                "left_name": f"{produkt_l} {smak_l}",
+                "right_name": f"{produkt_p} {smak_p}",
                 "kolor": kolor,
                 "left_ingredients": left_ing,
                 "right_ingredients": right_ing,
@@ -329,23 +344,6 @@ def stworz_stymulusy_proby(win, trial):
         color="white",
         height=28,
         pos=(0, 470),
-    )
-
-    left_card = visual.Rect(
-        win,
-        width=CARD_W,
-        height=CARD_H,
-        pos=(LEFT_X, 40),
-        fillColor=[-0.55, -0.55, -0.55],
-        lineColor=[0.2, 0.2, 0.2],
-    )
-    right_card = visual.Rect(
-        win,
-        width=CARD_W,
-        height=CARD_H,
-        pos=(RIGHT_X, 40),
-        fillColor=[-0.55, -0.55, -0.55],
-        lineColor=[0.2, 0.2, 0.2],
     )
 
     pack_left = visual.Rect(
@@ -367,18 +365,18 @@ def stworz_stymulusy_proby(win, trial):
 
     left_label = visual.TextStim(
         win,
-        text=trial["nazwa"] + "\nWersja A",
+        text=trial["left_name"] + "\nOpcja LEWO",
         color="white",
-        height=24,
+        height=23,
         pos=(LEFT_X, PRODUCT_Y),
         wrapWidth=PACK_W - 20,
         alignText="center",
     )
     right_label = visual.TextStim(
         win,
-        text=trial["nazwa"] + "\nWersja B",
+        text=trial["right_name"] + "\nOpcja PRAWO",
         color="white",
-        height=24,
+        height=23,
         pos=(RIGHT_X, PRODUCT_Y),
         wrapWidth=PACK_W - 20,
         alignText="center",
@@ -388,7 +386,7 @@ def stworz_stymulusy_proby(win, trial):
         win,
         text="Sklad:\n- " + "\n- ".join(trial["left_ingredients"]),
         color="white",
-        height=25,
+        height=21,
         pos=(LEFT_X, ING_Y),
         wrapWidth=CARD_W - 70,
         alignText="left",
@@ -397,7 +395,7 @@ def stworz_stymulusy_proby(win, trial):
         win,
         text="Sklad:\n- " + "\n- ".join(trial["right_ingredients"]),
         color="white",
-        height=25,
+        height=21,
         pos=(RIGHT_X, ING_Y),
         wrapWidth=CARD_W - 70,
         alignText="left",
@@ -414,14 +412,32 @@ def stworz_stymulusy_proby(win, trial):
     aoi = {
         "left_img": [LEFT_X - PACK_W / 2, LEFT_X + PACK_W / 2, PRODUCT_Y - PACK_H / 2, PRODUCT_Y + PACK_H / 2],
         "right_img": [RIGHT_X - PACK_W / 2, RIGHT_X + PACK_W / 2, PRODUCT_Y - PACK_H / 2, PRODUCT_Y + PACK_H / 2],
-        "left_ing": [LEFT_X - (CARD_W - 70) / 2, LEFT_X + (CARD_W - 70) / 2, ING_Y - 150, ING_Y + 90],
-        "right_ing": [RIGHT_X - (CARD_W - 70) / 2, RIGHT_X + (CARD_W - 70) / 2, ING_Y - 150, ING_Y + 90],
+        "left_ing": [LEFT_X - (CARD_W - 70) / 2, LEFT_X + (CARD_W - 70) / 2, ING_Y - 85, ING_Y + 100],
+        "right_ing": [RIGHT_X - (CARD_W - 70) / 2, RIGHT_X + (CARD_W - 70) / 2, ING_Y - 85, ING_Y + 100],
     }
+
+    # AOI pojedynczych skladnikow do wykrycia najdluzszej fiksacji na "slowie/skladniku"
+    word_aois = []
+    line_ys = [ING_Y + 32, ING_Y - 4, ING_Y - 40]
+    for i, sklad in enumerate(trial["left_ingredients"]):
+        word_aois.append(
+            {
+                "word": sklad,
+                "side": "left",
+                "rect": [LEFT_X - 185, LEFT_X + 185, line_ys[i] - 16, line_ys[i] + 16],
+            }
+        )
+    for i, sklad in enumerate(trial["right_ingredients"]):
+        word_aois.append(
+            {
+                "word": sklad,
+                "side": "right",
+                "rect": [RIGHT_X - 185, RIGHT_X + 185, line_ys[i] - 16, line_ys[i] + 16],
+            }
+        )
 
     stims = [
         title,
-        left_card,
-        right_card,
         pack_left,
         pack_right,
         left_label,
@@ -430,13 +446,13 @@ def stworz_stymulusy_proby(win, trial):
         right_ing_text,
         footer,
     ]
-    return stims, aoi
+    return stims, aoi, word_aois
 
 
 # ============================================================================
 # 7. ANALIZA GAZE
 # ============================================================================
-def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
+def policz_metryki_z_gaze(samples, aoi, word_aois, choice_side, rt):
     if len(samples) < 2:
         return {
             "left_total": 0.0,
@@ -449,6 +465,8 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
             "choice": choice_side,
             "rt": rt,
             "samples": samples,
+            "longest_fix_word": "brak danych",
+            "longest_fix_side": "brak",
         }
 
     metryki = {
@@ -459,6 +477,8 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
     }
 
     first_fix_side = "brak"
+    word_times = {item["word"]: 0.0 for item in word_aois}
+    word_sides = {item["word"]: item["side"] for item in word_aois}
 
     for i in range(len(samples) - 1):
         x = samples[i]["x"]
@@ -485,8 +505,18 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
         if in_right_ing:
             metryki["right_ing"] += dt
 
+        for item in word_aois:
+            if rect_contains(item["rect"], x, y):
+                word_times[item["word"]] += dt
+
     left_total = metryki["left_img"] + metryki["left_ing"]
     right_total = metryki["right_img"] + metryki["right_ing"]
+
+    longest_fix_word = "brak danych"
+    longest_fix_side = "brak"
+    if word_times:
+        longest_fix_word = max(word_times, key=word_times.get)
+        longest_fix_side = word_sides.get(longest_fix_word, "brak")
 
     metryki.update(
         {
@@ -496,6 +526,8 @@ def policz_metryki_z_gaze(samples, aoi, choice_side, rt):
             "choice": choice_side,
             "rt": rt,
             "samples": samples,
+            "longest_fix_word": longest_fix_word,
+            "longest_fix_side": longest_fix_side,
         }
     )
     return metryki
@@ -572,8 +604,8 @@ def analiza_koncowa(wyniki):
 
     # Heurystyczna sila czynnikow (0-100)
     scores = {
-        "Czas na prostych skladnikach (prawa strona)": max(0.0, avg_right_ing - avg_left_ing),
-        "Przewaga czasu spojrzen na prawa strone": float(np.mean([w["right_total"] - w["left_total"] for w in wyniki])),
+        "Przewaga czasu spojrzen na prawa strone": abs(float(np.mean([w["right_total"] - w["left_total"] for w in wyniki]))),
+        "Uwaga na skladniki (oba boki)": avg_left_ing + avg_right_ing,
         "Pierwsza fiksacja na prawej stronie": first_fix_right / n,
         "Uwaznosc na opakowanie (obrazy)": avg_left_img + avg_right_img,
         "Zgodnosc: dluzej patrzylem -> to wybralem": zgodnosc_spojrzenie_wybor / n,
@@ -613,7 +645,7 @@ def ekran_startowy(win):
         text=(
             "APP 1: ZDROWY WYBOR\n\n"
             "Na ekranie pojawia sie 5 par produktow (lewa i prawa strona).\n"
-            "Lewa strona ma bardziej zlozone nazwy skladnikow, prawa prostsze.\n"
+            "Po obu stronach skladniki sa mieszane (proste i bardziej zlozone).\n"
             "Wybierz strzalka, ktora opcja WG CIEBIE jest zdrowsza.\n"
             "To badanie preferencji - nie ma poprawnych ani blednych odpowiedzi.\n\n"
             "LEWO/PRAWO = odpowiedz, ESC = wyjscie, SPACJA = start badania"
@@ -665,6 +697,12 @@ def ekran_raportu(win, wyniki, podsumowanie):
     for idx, (name, score) in enumerate(podsumowanie["top_factors"], start=1):
         summary_lines.append(f"{idx}. {name} ({score:.1f}/100)")
 
+    summary_lines.extend(["", "Najdluzsza fiksacja w probach:"])
+    for w in wyniki:
+        summary_lines.append(
+            f"P{w['trial']}: {w['longest_fix_word']} ({'LEWO' if w['longest_fix_side']=='left' else 'PRAWO'})"
+        )
+
     summary = visual.TextStim(
         win,
         text="\n".join(summary_lines),
@@ -695,9 +733,11 @@ def ekran_raportu(win, wyniki, podsumowanie):
         labels.append(
             visual.TextStim(
                 win,
-                text=f"Heatmapa proba {i + 1}",
+                text=(
+                    f"Heatmapa P{i + 1}: {wyniki[i]['left_name']} vs {wyniki[i]['right_name']}"
+                ),
                 color="white",
-                height=20,
+                height=16,
                 pos=(pos[0], pos[1] + 110),
             )
         )
@@ -776,6 +816,8 @@ def zapisz_csv(wyniki, podsumowanie):
 
     fields = [
         "trial",
+        "left_name",
+        "right_name",
         "choice",
         "rt",
         "left_total",
@@ -785,6 +827,8 @@ def zapisz_csv(wyniki, podsumowanie):
         "left_ing",
         "right_ing",
         "first_fix_side",
+        "longest_fix_word",
+        "longest_fix_side",
     ]
 
     with open(out_file, "w", newline="", encoding="utf-8") as f:
@@ -808,7 +852,7 @@ def zapisz_csv(wyniki, podsumowanie):
 # 9. PRZEBIEG PROBY
 # ============================================================================
 def run_trial(win, collector, trial):
-    stims, aoi = stworz_stymulusy_proby(win, trial)
+    stims, aoi, word_aois = stworz_stymulusy_proby(win, trial)
     start = core.MonotonicClock()
     samples = []
     choice = None
@@ -838,7 +882,10 @@ def run_trial(win, collector, trial):
     if choice is None:
         choice = "left" if random.random() < 0.5 else "right"
 
-    wynik = policz_metryki_z_gaze(samples, aoi, choice, rt)
+    wynik = policz_metryki_z_gaze(samples, aoi, word_aois, choice, rt)
+    wynik["trial"] = trial["trial"]
+    wynik["left_name"] = trial["left_name"]
+    wynik["right_name"] = trial["right_name"]
     return wynik
 
 
