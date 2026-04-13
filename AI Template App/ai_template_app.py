@@ -188,6 +188,28 @@ def norm_to_pix(nx, ny):
     return px, py
 
 
+CURSOR_WATCHER = None
+CURSOR_REVEALED = False
+
+
+def init_hidden_cursor(win):
+    global CURSOR_WATCHER, CURSOR_REVEALED
+    CURSOR_WATCHER = event.Mouse(win=win)
+    CURSOR_WATCHER.getRel()
+    CURSOR_REVEALED = False
+    win.mouseVisible = False
+
+
+def reveal_cursor_if_moved(win, threshold=0.0):
+    global CURSOR_REVEALED
+    if CURSOR_WATCHER is None or CURSOR_REVEALED:
+        return
+    dx, dy = CURSOR_WATCHER.getRel()
+    if abs(dx) > threshold or abs(dy) > threshold:
+        win.mouseVisible = True
+        CURSOR_REVEALED = True
+
+
 # ============================================================================
 # 5. DEVICE CONNECTION
 # ============================================================================
@@ -346,6 +368,7 @@ def run_calibration(win, eyetracker):
         px, py = norm_to_pix(nx, ny)
 
         for frame in range(60):
+            reveal_cursor_if_moved(win)
             dot.radius = CAL_DOT_RADIUS * (1 - frame / 80)
             dot.pos    = (px, py)
             inner.pos  = (px, py)
@@ -425,6 +448,7 @@ def run_gaze_demo(win, gaze_collector):
     gaze_collector.start()
 
     while True:
+        reveal_cursor_if_moved(win)
         if "escape" in event.getKeys():
             break
 
@@ -458,6 +482,7 @@ def main():
         units="pix",
         screen=0
     )
+    init_hidden_cursor(win)
 
     if eyetracker is None:
         msg = visual.TextStim(

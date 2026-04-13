@@ -78,6 +78,28 @@ def rect_contains(rect, x, y):
     return rect[0] <= x <= rect[1] and rect[2] <= y <= rect[3]
 
 
+CURSOR_WATCHER = None
+CURSOR_REVEALED = False
+
+
+def init_hidden_cursor(win):
+    global CURSOR_WATCHER, CURSOR_REVEALED
+    CURSOR_WATCHER = event.Mouse(win=win)
+    CURSOR_WATCHER.getRel()
+    CURSOR_REVEALED = False
+    win.mouseVisible = False
+
+
+def reveal_cursor_if_moved(win, threshold=0.0):
+    global CURSOR_REVEALED
+    if CURSOR_WATCHER is None or CURSOR_REVEALED:
+        return
+    dx, dy = CURSOR_WATCHER.getRel()
+    if abs(dx) > threshold or abs(dy) > threshold:
+        win.mouseVisible = True
+        CURSOR_REVEALED = True
+
+
 class GazeCollector:
     def __init__(self, eyetracker, win=None):
         self._et = eyetracker
@@ -189,6 +211,7 @@ def run_calibration(win, eyetracker):
     for nx, ny in points:
         px, py = norm_to_pix(nx, ny)
         for frame in range(48):
+            reveal_cursor_if_moved(win)
             dot.radius = max(8, 24 - frame * 0.3)
             dot.pos = (px, py)
             center.pos = (px, py)
@@ -261,6 +284,7 @@ def ekran_sukcesu(win):
     )
 
     while True:
+        reveal_cursor_if_moved(win)
         panel.draw()
         txt.draw()
         win.flip()
@@ -490,6 +514,7 @@ def run_browser_mockup(win, collector):
     collector.start()
 
     while True:
+        reveal_cursor_if_moved(win)
         now_t = clock.getTime()
         dt = max(0.0, now_t - prev_t)
         prev_t = now_t
@@ -565,6 +590,7 @@ def main():
         color="black",
         units="pix",
     )
+    init_hidden_cursor(win)
 
     if eyetracker is None:
         msg = visual.TextStim(
