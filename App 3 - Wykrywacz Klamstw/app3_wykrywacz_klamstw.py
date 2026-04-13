@@ -289,7 +289,7 @@ def draw_trial_scene(win, trial, phase_name, phase_idx, phase_total):
         win,
         text=(
             f"{phase_name}  {phase_idx}/{phase_total} | "
-            "Najpierw obejrzyj oba obrazy, potem oznacz: LEWO=KLAMIE, PRAWO=PRAWDA"
+            "Obejrzyj oba obrazy i odpowiedz sobie na pytanie z dolu ekranu"
         ),
         color="white",
         height=26,
@@ -335,7 +335,10 @@ def draw_trial_scene(win, trial, phase_name, phase_idx, phase_total):
 
     q = visual.TextStim(
         win,
-        text="Deklaracja intencji: strzalka LEWO = KLAMIE, strzalka PRAWO = MOWIE PRAWDE",
+        text=(
+            "Pytanie: Ktora z dwoch rzeczy Ci sie bardziej podoba?\n"
+            "Nastepnie oznacz intencje odpowiedzi: LEWO = KLAMIE, PRAWO = MOWIE PRAWDE"
+        ),
         color="yellow",
         height=27,
         pos=(0, -250),
@@ -469,16 +472,53 @@ def predict_prob(model, x):
     return 1.0 / (1.0 + np.exp(-z))
 
 
+def explain_prediction(model, x, top_k=3):
+    xn = (x - model["mu"]) / model["sigma"]
+    contrib = xn * model["w"]
+    idxs = np.argsort(-np.abs(contrib))[:top_k]
+
+    explain = []
+    for idx in idxs:
+        direction = "w strone KLAMSTWA" if contrib[idx] >= 0 else "w strone PRAWDY"
+        explain.append(
+            {
+                "name": FEATURE_NAMES[idx],
+                "contribution": float(contrib[idx]),
+                "direction": direction,
+                "value": float(x[idx]),
+            }
+        )
+    return explain
+
+
 # ============================================================================
 # 7. PRZEBIEG PROBY
 # ============================================================================
 def run_one_trial(win, collector, trial, phase_name, phase_idx, phase_total, model=None):
     stims, aoi = draw_trial_scene(win, trial, phase_name, phase_idx, phase_total)
+    ready = visual.TextStim(
+        win,
+        text=(
+            f"{phase_name} {phase_idx}/{phase_total}\n\n"
+            "Za chwile zobaczysz dwie opcje.\n"
+            "Zastanow sie: Ktora z dwoch rzeczy Ci sie bardziej podoba?\n"
+            "Gdy bedziesz gotow_a, nacisnij SPACJE."
+        ),
+        color="white",
+        height=30,
+        wrapWidth=1500,
+    )
+    ready.draw()
+    win.flip()
+    keys = event.waitKeys(keyList=["space", "escape"])
+    if "escape" in keys:
+        return None
+
     clock = core.MonotonicClock()
     samples = []
     label = None
 
-    while clock.getTime() < TRIAL_TIMEOUT:
+    while True:
         reveal_cursor_if_moved(win)
 
         keys = event.getKeys(["left", "right", "escape"])
@@ -500,16 +540,15 @@ def run_one_trial(win, collector, trial, phase_name, phase_idx, phase_total, mod
         win.flip()
 
     rt = clock.getTime()
-    if label is None:
-        label = 1 if random.random() < 0.5 else 0
-
     feat = features_from_samples(samples, aoi, rt)
 
     pred_label = None
     pred_prob = None
+    evidence = []
     if model is not None:
         pred_prob = predict_prob(model, feat)
         pred_label = 1 if pred_prob >= 0.5 else 0
+        evidence = explain_prediction(model, feat)
 
     wynik = {
         "trial": trial["trial"],
@@ -523,6 +562,7 @@ def run_one_trial(win, collector, trial, phase_name, phase_idx, phase_total, mod
         "pred_prob": pred_prob,
         "samples_n": len(samples),
         "features": feat,
+        "evidence": evidence,
     }
     return wynik
 
@@ -632,6 +672,9 @@ def zapisz_csv(rows, model):
         "label_text",
         "pred_label",
         "pred_prob",
+        "evidence_1",
+        "evidence_2",
+        "evidence_3",
         "rt",
         "samples_n",
     ] + [f"feat_{name}" for name in FEATURE_NAMES]
@@ -642,6 +685,13 @@ def zapisz_csv(rows, model):
 
         for r in rows:
             row = {k: r.get(k, "") for k in fieldnames}
+            evidence = r.get("evidence", [])
+            for idx in range(3):
+                if idx < len(evidence):
+                    ev = evidence[idx]
+                    row[f"evidence_{idx + 1}"] = (
+                        f"{ev['name']} | wartosc={ev['value']:.3f} | {ev['direction']} | sila={ev['contribution']:.3f}"
+                    )
             for i, name in enumerate(FEATURE_NAMES):
                 row[f"feat_{name}"] = f"{float(r['features'][i]):.6f}"
             if r["pred_prob"] is not None:
@@ -665,7 +715,9 @@ def pokaz_wstep(win):
         win,
         text=(
             "APP 3: WYKRYWACZ KLAMSTW (PROTOTYP)\n\n"
-            "Instrukcja: patrz na dwa obrazy i deklaruj intencje strzalka:\n"
+            "Instrukcja: patrz na dwa obrazy i odpowiedz sobie na pytanie:\n"
+            "Ktora z dwoch rzeczy Ci sie bardziej podoba?\n\n"
+            "Nastepnie deklaruj intencje strzalka:\n"
             "LEWO = klamie, PRAWO = mowie prawde.\n\n"
             "Faza 1: model uczy sie Twojego wzorca z danych wzroku.\n"
             "Faza 2: model sam przewiduje, czy klamiesz.\n\n"
@@ -682,22 +734,35 @@ def pokaz_wstep(win):
     return "escape" not in keys
 
 
-def pokaz_predykcje(win, pred_label, pred_prob, true_label):
+def pokaz_predykcje(win, pred_label, pred_prob, true_label, evidence):
     color = "lime" if pred_label == true_label else "orange"
+    evidence_lines = []
+    for idx, ev in enumerate(evidence[:3], start=1):
+        evidence_lines.append(
+            f"{idx}. {ev['name']}: {ev['value']:.2f} -> {ev['direction']}"
+        )
+
     txt = visual.TextStim(
         win,
         text=(
             f"Model przewidzial: {'KLAMSTWO' if pred_label == 1 else 'PRAWDA'}\n"
             f"Prawdopodobienstwo klamstwa: {100.0 * pred_prob:.1f}%\n"
-            f"Twoja etykieta: {'KLAMSTWO' if true_label == 1 else 'PRAWDA'}"
+            f"Twoja etykieta: {'KLAMSTWO' if true_label == 1 else 'PRAWDA'}\n\n"
+            "Dowody z gaze data:\n"
+            + "\n".join(evidence_lines)
+            + "\n\nSPACJA = dalej"
         ),
         color=color,
-        height=32,
+        height=28,
         wrapWidth=1300,
     )
-    txt.draw()
-    win.flip()
-    core.wait(0.8)
+    while True:
+        reveal_cursor_if_moved(win)
+        txt.draw()
+        win.flip()
+        keys = event.getKeys(["space", "escape"])
+        if keys:
+            return
 
 
 # ============================================================================
@@ -782,7 +847,7 @@ def main():
             win.close()
             return
         test_rows.append(r)
-        pokaz_predykcje(win, r["pred_label"], r["pred_prob"], r["label"])
+        pokaz_predykcje(win, r["pred_label"], r["pred_prob"], r["label"], r["evidence"])
 
     collector.stop()
 
