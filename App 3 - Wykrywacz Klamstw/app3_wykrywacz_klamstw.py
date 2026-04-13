@@ -528,6 +528,37 @@ def zrob_heatmape(samples, width=180, height=110):
     return rgb
 
 
+def zbuduj_typowy_wzorzec(rows, label_value):
+    selected = [r for r in rows if r.get("label") == label_value]
+    all_samples = []
+    for row in selected:
+        all_samples.extend(row.get("samples", []))
+
+    if not selected:
+        return {
+            "heatmap": np.zeros((110, 180, 3), dtype=np.float32),
+            "summary": "Brak danych dla tej klasy.",
+        }
+
+    avg_rt = float(np.mean([r["rt"] for r in selected]))
+    avg_switch = float(np.mean([r["features"][4] for r in selected]))
+    avg_ratio = float(np.mean([r["features"][3] for r in selected]))
+    avg_first_right = float(np.mean([r["features"][5] for r in selected]))
+
+    side_pref = "prawa strona" if avg_ratio > 0 else "lewa strona"
+    first_fix = "prawej" if avg_first_right >= 0.5 else "lewej"
+
+    summary = (
+        f"sr. RT={avg_rt:.2f}s | przelaczenia={avg_switch:.1f} | "
+        f"przewaga spojrzen: {side_pref} | pierwsza fiksacja czesciej po {first_fix}"
+    )
+
+    return {
+        "heatmap": zrob_heatmape(all_samples, width=180, height=110),
+        "summary": summary,
+    }
+
+
 # ============================================================================
 # 7. PRZEBIEG PROBY
 # ============================================================================
@@ -637,6 +668,7 @@ def licz_metryki_test(test_rows):
 
 def pokaz_raport(win, train_rows, test_rows, model):
     m = licz_metryki_test(test_rows)
+    all_rows = train_rows + test_rows
 
     top_feat = []
     if model is not None:
@@ -687,6 +719,64 @@ def pokaz_raport(win, train_rows, test_rows, model):
         wrapWidth=760,
         alignText="left",
         pos=(-360, 80),
+    )
+
+    lie_pattern = zbuduj_typowy_wzorzec(all_rows, 1)
+    truth_pattern = zbuduj_typowy_wzorzec(all_rows, 0)
+
+    lie_panel = visual.ImageStim(
+        win,
+        image=lie_pattern["heatmap"],
+        units="pix",
+        size=(250, 150),
+        pos=(-500, -245),
+        interpolate=True,
+    )
+    truth_panel = visual.ImageStim(
+        win,
+        image=truth_pattern["heatmap"],
+        units="pix",
+        size=(250, 150),
+        pos=(-200, -245),
+        interpolate=True,
+    )
+    lie_title = visual.TextStim(
+        win,
+        text="Typowy schemat + decyzja: KLAMSTWO",
+        color=[-0.15, -0.15, -0.15],
+        height=18,
+        pos=(-500, -140),
+        wrapWidth=280,
+    )
+    truth_title = visual.TextStim(
+        win,
+        text="Typowy schemat + decyzja: PRAWDA",
+        color=[-0.15, -0.15, -0.15],
+        height=18,
+        pos=(-200, -140),
+        wrapWidth=280,
+    )
+    lie_desc = visual.TextStim(
+        win,
+        text=(
+            "Gdy badany deklaruje: 'Wolisz X od Y? KLAMSTWO'\n"
+            + lie_pattern["summary"]
+        ),
+        color=[-0.2, -0.2, -0.2],
+        height=14,
+        pos=(-500, -355),
+        wrapWidth=280,
+    )
+    truth_desc = visual.TextStim(
+        win,
+        text=(
+            "Gdy badany deklaruje: 'Wolisz X od Y? PRAWDA'\n"
+            + truth_pattern["summary"]
+        ),
+        color=[-0.2, -0.2, -0.2],
+        height=14,
+        pos=(-200, -355),
+        wrapWidth=280,
     )
 
     heatmaps = []
@@ -753,6 +843,12 @@ def pokaz_raport(win, train_rows, test_rows, model):
         reveal_cursor_if_moved(win)
         panel.draw()
         txt.draw()
+        lie_panel.draw()
+        truth_panel.draw()
+        lie_title.draw()
+        truth_title.draw()
+        lie_desc.draw()
+        truth_desc.draw()
         for hm in heatmaps:
             hm.draw()
         for lbl in labels:
