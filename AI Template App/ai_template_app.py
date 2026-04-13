@@ -162,6 +162,74 @@ except ImportError:
 
 if not DEV_MODE:
     import tobii_research as tr
+
+# ============================================================================
+# 3. CONSTANTS
+# ============================================================================
+SCREEN_WIDTH  = 1920
+SCREEN_HEIGHT = 1080
+FULLSCREEN    = True
+
+CAL_ACTIVE_COLOR  = "white"
+CAL_DONE_COLOR    = "green"
+CAL_DOT_RADIUS    = 20
+
+GAZE_CURSOR_RADIUS = 15
+GAZE_CURSOR_COLOR  = [1.0, 0.2, 0.2]
+
+
+# ============================================================================
+# 4. HELPERS
+# ============================================================================
+def norm_to_pix(nx, ny):
+    """Convert Tobii normalized coords to PsychoPy pixel coordinates."""
+    px = (nx - 0.5) * SCREEN_WIDTH
+    py = (0.5 - ny) * SCREEN_HEIGHT
+    return px, py
+
+
+# ============================================================================
+# 5. DEVICE CONNECTION
+# ============================================================================
+def connect_eyetracker():
+    """
+    Discover the first available Tobii eye tracker and return it.
+    In DEV_MODE returns a sentinel so the app can run without hardware.
+    """
+    if DEV_MODE:
+        print("[AI TEMPLATE] DEV_MODE: skipping eye tracker, mouse will simulate gaze.")
+        return "DEV_MODE"
+
+    print("\n[AI TEMPLATE] Searching for eye tracker...")
+    trackers = tr.find_all_eyetrackers()
+
+    if not trackers:
+        print("[AI TEMPLATE] No eye tracker found.")
+        return None
+
+    et = trackers[0]
+    print(f"[AI TEMPLATE] Connected  : {et.model}")
+    print(f"[AI TEMPLATE] Serial     : {et.serial_number}")
+    print(f"[AI TEMPLATE] Address    : {et.address}")
+    print(f"[AI TEMPLATE] Frequencies: {et.get_all_gaze_output_frequencies()} Hz")
+    return et
+
+
+# ============================================================================
+# 6. GAZE COLLECTOR
+# ============================================================================
+class GazeCollector:
+    """Collects gaze samples from Tobii or mouse (DEV_MODE)."""
+
+    def __init__(self, eyetracker, win=None):
+        self._et = eyetracker
+        self._win = win
+        self._last = None
+        self._mouse = None
+        self.active = False
+
+    def start(self):
+        if DEV_MODE:
             self._mouse = event.Mouse(win=self._win)
             self.active = True
             print("[AI TEMPLATE] DEV_MODE gaze stream started (mouse simulation).")
@@ -170,7 +238,7 @@ if not DEV_MODE:
         self._et.subscribe_to(
             tr.EYETRACKER_GAZE_DATA,
             self._callback,
-            as_dictionary=True
+            as_dictionary=True,
         )
         self.active = True
         print("[AI TEMPLATE] Gaze stream started.")
@@ -181,24 +249,16 @@ if not DEV_MODE:
         self.active = False
         print("[AI TEMPLATE] Gaze stream stopped.")
 
-    # ---- callback (runs in Tobii thread, real mode only) ----
-
     def _callback(self, data):
         self._last = data
 
-    # ---- read helpers ----
-
     def get_gaze_norm(self):
-        """
-        Return averaged gaze as normalised (x, y) in [0,1] or None.
-        DEV_MODE: derived from mouse position.
-        Real mode: averaged from left + right eye validity.
-        """
+        """Return averaged gaze as normalized (x, y) in [0,1] or None."""
         if DEV_MODE:
             if self._mouse is None:
                 return None
-            mx, my = self._mouse.getPos()   # PsychoPy pixels
-            nx = (mx / SCREEN_WIDTH)  + 0.5
+            mx, my = self._mouse.getPos()
+            nx = (mx / SCREEN_WIDTH) + 0.5
             ny = 0.5 - (my / SCREEN_HEIGHT)
             return nx, ny
 
@@ -223,9 +283,7 @@ if not DEV_MODE:
         return sum(xs) / len(xs), sum(ys) / len(ys)
 
     def get_gaze_pix(self):
-        """
-        Return gaze position in PsychoPy pixel coordinates or None.
-        """
+        """Return gaze position in PsychoPy pixel coordinates or None."""
         norm = self.get_gaze_norm()
         if norm is None:
             return None
