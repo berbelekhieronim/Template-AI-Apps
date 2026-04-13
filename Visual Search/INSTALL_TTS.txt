@@ -1,0 +1,32 @@
+INSTALACJA TEXT-TO-SPEECH (Polski głos)
+========================================
+
+Eksperyment używa syntezatora mowy dla triali audio.
+
+OPCJA 1: gTTS (ZALECANE - polski głos Google)
+----------------------------------------------
+1. Otwórz CMD/PowerShell jako Administrator
+2. Przejdź do folderu PsychoPy:
+   cd "C:\Users\Instalator\Desktop\ET_PsychoPy — kopia 13.12.2025 — kopia\PsychoPy"
+
+3. Zainstaluj gTTS:
+   python.exe -m pip install gtts
+
+SPRAWDZENIE:
+   python.exe -c "from gtts import gTTS; print('gTTS działa!')"
+
+ZALETY gTTS:
+- Naturalny polski głos Google
+- Działa offline (po pierwszym wygenerowaniu audio)
+- Automatycznie zapisuje pliki MP3 w folderze temp_audio/
+
+OPCJA 2: pyttsx3 (fallback - głos Windows)
+-------------------------------------------
+Jeśli gTTS nie działa, eksperyment użyje pyttsx3 (wbudowany głos Windows):
+
+   python.exe -m pip install pyttsx3
+
+UWAGA: 
+- Bez instalacji eksperyment zadziała z 10 trialami (tylko tekst i obraz)
+- Z gTTS będzie 15 triali (tekst, obraz i POLSKI głos)
+- Z pyttsx3 będzie 15 triali (tekst, obraz i angielski głos Windows)

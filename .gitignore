@@ -1,0 +1,22 @@
+PsychoPy/
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Windows noise
+desktop.ini
+Thumbs.db
+
+# VS Code local settings
+.vscode/
+
+# Experiment outputs
+Visual Search/debug_log_*.txt
+Visual Search/results_*.csv
+Visual Search/temp_audio/
+
+# Common local artifacts
+*.log
