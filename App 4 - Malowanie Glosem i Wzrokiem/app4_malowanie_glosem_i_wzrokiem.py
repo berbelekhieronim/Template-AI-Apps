@@ -400,6 +400,7 @@ def build_base_canvas(w, h):
     r = 0.02 + 0.08 * (1.0 - yy) + 0.02 * np.sin(2 * math.pi * (xx * 0.7 + yy * 0.2))
     g = 0.03 + 0.07 * (1.0 - yy) + 0.02 * np.sin(2 * math.pi * (xx * 0.3 + yy * 0.5 + 0.2))
     b = 0.05 + 0.11 * (1.0 - yy)
+    b = np.broadcast_to(b, (h, w))
 
     canvas = np.stack([r, g, b], axis=2)
     return np.clip(canvas, 0.0, 1.0).astype(np.float32)
