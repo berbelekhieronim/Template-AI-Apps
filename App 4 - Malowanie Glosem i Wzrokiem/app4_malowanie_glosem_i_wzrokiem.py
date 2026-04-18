@@ -510,17 +510,72 @@ def show_outro(win, saved_path):
             return
 
 
+def show_checkpoint(win):
+    txt = visual.TextStim(
+        win,
+        text=(
+            "Kalibracja zakonczona.\n"
+            "Zaraz startuje sesja malowania.\n\n"
+            "ENTER = start sesji\n"
+            "ESC = wyjscie"
+        ),
+        color="white",
+        height=32,
+        wrapWidth=1500,
+    )
+    txt.draw()
+    win.flip()
+    keys = event.waitKeys(keyList=["return", "escape"])
+    return "escape" not in keys
+
+
+def show_runtime_error(win, err):
+    msg = str(err)
+    if len(msg) > 500:
+        msg = msg[:500] + "..."
+    txt = visual.TextStim(
+        win,
+        text=(
+            "APP 4 - blad wykonania\n\n"
+            "Aplikacja nie zamknela sie cicho, tylko przechwycila blad.\n"
+            "Skopiuj ten komunikat i wyslij prowadzacemu:\n\n"
+            f"{msg}\n\n"
+            "SPACJA = zamknij"
+        ),
+        color="white",
+        height=26,
+        wrapWidth=1700,
+    )
+    while True:
+        txt.draw()
+        win.flip()
+        keys = event.getKeys(["space", "escape", "return"])
+        if keys:
+            return
+
+
 def run_session(win, collector):
     base_canvas = build_base_canvas(CANVAS_W, CANVAS_H)
     canvas = base_canvas.copy()
-    image = visual.ImageStim(
-        win,
-        image=np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32),
-        units="pix",
-        size=(SCREEN_WIDTH, SCREEN_HEIGHT),
-        pos=(0, 0),
-        interpolate=True,
-    )
+    frame_u8 = np.clip(canvas * 255.0, 0, 255).astype(np.uint8)
+    try:
+        image = visual.ImageStim(
+            win,
+            image=frame_u8,
+            units="pix",
+            size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+            pos=(0, 0),
+            interpolate=True,
+        )
+    except Exception:
+        image = visual.ImageStim(
+            win,
+            image=frame_u8,
+            units="pix",
+            size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+            pos=(0, 0),
+            interpolate=False,
+        )
 
     vignette = None
     try:
@@ -609,7 +664,7 @@ def run_session(win, collector):
             canvas += 0.0006 * base_canvas
             canvas[:] = np.clip(canvas, 0.0, 1.0)
 
-            frame_tex = np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
+            frame_tex = np.clip(canvas * 255.0, 0, 255).astype(np.uint8)
             try:
                 image.image = frame_tex
                 image.draw()
@@ -680,11 +735,21 @@ def main():
         core.wait(0.15)
         event.clearEvents(eventType="keyboard")
 
+        if not show_checkpoint(win):
+            return
+
+        event.clearEvents(eventType="keyboard")
+
         collector = GazeCollector(eyetracker, win=win)
         collector.start()
 
         try:
-            saved_path = run_session(win, collector)
+            try:
+                saved_path = run_session(win, collector)
+            except Exception as exc:
+                print(f"[APP4] Runtime error: {exc}")
+                show_runtime_error(win, exc)
+                return
             if saved_path is None:
                 return
             show_outro(win, saved_path)
