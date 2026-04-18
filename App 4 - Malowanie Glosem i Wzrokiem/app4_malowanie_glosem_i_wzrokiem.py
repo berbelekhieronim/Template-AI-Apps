@@ -548,6 +548,7 @@ def run_session(win, collector):
 
     clock = core.Clock()
     frame_clock = core.Clock()
+    start_guard_until = 0.60
 
     saved_path = None
     render_warned = False
@@ -565,7 +566,8 @@ def run_session(win, collector):
             keys = event.getKeys(["escape", "space", "c", "s"])
             if "escape" in keys:
                 return None
-            if "space" in keys:
+            # Ignore stale SPACE keypress right after calibration/instructions.
+            if "space" in keys and now_t >= start_guard_until:
                 break
             if "c" in keys:
                 canvas = base_canvas.copy()
@@ -664,6 +666,11 @@ def main():
         if not run_calibration(win, eyetracker):
             print("Kalibracja nieudana lub anulowana.")
             return
+
+        # Flush key events so held SPACE from previous screens does not end session.
+        event.clearEvents(eventType="keyboard")
+        core.wait(0.15)
+        event.clearEvents(eventType="keyboard")
 
         collector = GazeCollector(eyetracker, win=win)
         collector.start()
