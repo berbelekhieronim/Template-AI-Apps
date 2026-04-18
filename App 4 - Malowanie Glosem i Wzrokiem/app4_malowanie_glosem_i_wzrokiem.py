@@ -92,6 +92,9 @@ SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
 FULLSCREEN = True
 
+ACTIVE_SCREEN_WIDTH = float(SCREEN_WIDTH)
+ACTIVE_SCREEN_HEIGHT = float(SCREEN_HEIGHT)
+
 CANVAS_W = 1280
 CANVAS_H = 720
 
@@ -101,9 +104,20 @@ SESSION_SECONDS = 120.0
 # 3. GAZE TOOLS + CURSOR VISIBILITY
 # ============================================================================
 def norm_to_pix(nx, ny):
-    px = (nx - 0.5) * SCREEN_WIDTH
-    py = (0.5 - ny) * SCREEN_HEIGHT
+    px = (nx - 0.5) * ACTIVE_SCREEN_WIDTH
+    py = (0.5 - ny) * ACTIVE_SCREEN_HEIGHT
     return px, py
+
+
+def update_active_screen_size(win):
+    global ACTIVE_SCREEN_WIDTH, ACTIVE_SCREEN_HEIGHT
+    try:
+        w, h = win.size
+        ACTIVE_SCREEN_WIDTH = max(1.0, float(w))
+        ACTIVE_SCREEN_HEIGHT = max(1.0, float(h))
+    except Exception:
+        ACTIVE_SCREEN_WIDTH = float(SCREEN_WIDTH)
+        ACTIVE_SCREEN_HEIGHT = float(SCREEN_HEIGHT)
 
 
 CURSOR_WATCHER = None
@@ -467,8 +481,8 @@ def pix_to_canvas(px, py):
     if not np.isfinite(px) or not np.isfinite(py):
         return None
 
-    nx = (px / SCREEN_WIDTH) + 0.5
-    ny = 0.5 - (py / SCREEN_HEIGHT)
+    nx = (px / ACTIVE_SCREEN_WIDTH) + 0.5
+    ny = 0.5 - (py / ACTIVE_SCREEN_HEIGHT)
     nx = max(0.0, min(1.0, nx))
     ny = max(0.0, min(1.0, ny))
 
@@ -583,24 +597,28 @@ def show_runtime_error(win, err):
 
 
 def run_session(win, collector):
+    update_active_screen_size(win)
+    view_w = ACTIVE_SCREEN_WIDTH
+    view_h = ACTIVE_SCREEN_HEIGHT
+
     base_canvas = build_base_canvas(CANVAS_W, CANVAS_H)
     canvas = base_canvas.copy()
-    frame_u8 = np.clip(canvas * 255.0, 0, 255).astype(np.uint8)
+    frame_tex = np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
     try:
         image = visual.ImageStim(
             win,
-            image=frame_u8,
+            image=frame_tex,
             units="pix",
-            size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+            size=(view_w, view_h),
             pos=(0, 0),
             interpolate=True,
         )
     except Exception:
         image = visual.ImageStim(
             win,
-            image=frame_u8,
+            image=frame_tex,
             units="pix",
-            size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+            size=(view_w, view_h),
             pos=(0, 0),
             interpolate=False,
         )
@@ -611,7 +629,7 @@ def run_session(win, collector):
             win,
             tex="sqr",
             mask="raisedCos",
-            size=(SCREEN_WIDTH * 1.3, SCREEN_HEIGHT * 1.3),
+            size=(view_w * 1.3, view_h * 1.3),
             pos=(0, 0),
             color=[-0.35, -0.35, -0.35],
             opacity=0.20,
@@ -625,7 +643,7 @@ def run_session(win, collector):
         text="",
         color=[0.8, 0.8, 0.8],
         height=22,
-        pos=(0, -500),
+        pos=(0, -0.46 * view_h),
         wrapWidth=1800,
     )
 
@@ -695,7 +713,7 @@ def run_session(win, collector):
             canvas += 0.0006 * base_canvas
             canvas[:] = np.clip(canvas, 0.0, 1.0)
 
-            frame_tex = np.clip(canvas * 255.0, 0, 255).astype(np.uint8)
+            frame_tex = np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
             try:
                 image.image = frame_tex
                 image.draw()
@@ -707,7 +725,7 @@ def run_session(win, collector):
                     win,
                     image=frame_tex,
                     units="pix",
-                    size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+                    size=(view_w, view_h),
                     pos=(0, 0),
                     interpolate=False,
                 )
@@ -749,6 +767,8 @@ def main():
         color=[-0.96, -0.96, -0.96],
         waitBlanking=True,
     )
+
+    update_active_screen_size(win)
 
     init_hidden_cursor(win)
 
