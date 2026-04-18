@@ -497,11 +497,11 @@ def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength, shape_kind
     n = int(2 + strength * 8)
     for _ in range(n):
         angle = random.uniform(0.0, 2.0 * math.pi)
-        dist = random.uniform(5.0, 80.0 + 220.0 * strength)
+        dist = random.uniform(4.0, 95.0 + 250.0 * strength)
         rx = cx + math.cos(angle) * dist
         ry = cy + math.sin(angle) * dist
-        radius = random.uniform(3.0, 8.0 + 22.0 * strength)
-        alpha = random.uniform(0.03, 0.11 + 0.16 * strength)
+        radius = random.uniform(6.0, 14.0 + 30.0 * strength)
+        alpha = random.uniform(0.10, 0.22 + 0.22 * strength)
         add_soft_stamp(canvas, rx, ry, radius, color_rgb, alpha, shape_kind=shape_kind, texture=texture)
 
 
@@ -669,8 +669,8 @@ def run_session(win, collector):
     status = visual.TextStim(
         win,
         text="",
-        color=[0.8, 0.8, 0.8],
-        height=22,
+        color=[0.72, 0.72, 0.72],
+        height=14,
         pos=(0, -0.46 * view_h),
         wrapWidth=1800,
     )
@@ -689,6 +689,10 @@ def run_session(win, collector):
     saved_path = None
     render_warned = False
     brush_shape = "circle"
+    status_update_t = 0.0
+    smooth_rms = 0.0
+    smooth_centroid = 0.0
+    smooth_zcr = 0.0
 
     try:
         while True:
@@ -716,15 +720,26 @@ def run_session(win, collector):
             gaze = collector.get_gaze_pix()
             rms, centroid, zcr = voice.get_features(dt)
 
+            # Smooth readout to avoid a "dancing" status line.
+            smooth_rms = 0.90 * smooth_rms + 0.10 * rms
+            smooth_centroid = 0.90 * smooth_centroid + 0.10 * centroid
+            smooth_zcr = 0.90 * smooth_zcr + 0.10 * zcr
+
+            # Reduce mic sensitivity: ignore quiet-room noise and compress dynamics.
+            # Normal speaking volume should still expand the brush steadily.
+            rms_floor = 0.035
+            rms_eff = max(0.0, rms - rms_floor)
+            rms_drive = min(1.0, math.sqrt(rms_eff / 0.22))
+
             pulse_phase += dt * (1.5 + 6.0 * centroid)
             pulse = 0.5 + 0.5 * math.sin(pulse_phase * 2.0 * math.pi)
 
-            hue = (hue + dt * (0.04 + 0.7 * centroid + 0.35 * zcr + 0.10 * pulse)) % 1.0
+            hue = (hue + dt * (0.04 + 0.5 * centroid + 0.22 * zcr + 0.10 * pulse)) % 1.0
             sat = max(0.35, min(1.0, 0.45 + 0.9 * centroid))
-            val = max(0.35, min(1.0, 0.45 + 2.2 * rms + 0.2 * pulse))
+            val = max(0.35, min(1.0, 0.45 + 1.15 * rms_drive + 0.2 * pulse))
             rgb = colorsys.hsv_to_rgb(hue, sat, val)
             brush_shape = choose_brush_shape(rms, centroid, zcr)
-            brush_texture = max(0.0, min(0.65, 0.08 + 1.8 * zcr + 0.45 * rms))
+            brush_texture = max(0.0, min(0.65, 0.08 + 1.4 * zcr + 0.28 * rms_drive))
 
             if gaze is not None:
                 sx, sy, speed = smoother.update(gaze[0], gaze[1], now_t)
@@ -733,8 +748,9 @@ def run_session(win, collector):
                     continue
                 cx, cy = xy
 
-                brush_radius = 6.0 + 65.0 * rms + 14.0 * pulse + min(28.0, speed * 0.012)
-                brush_alpha = max(0.03, min(0.44, 0.05 + 0.45 * rms + 0.15 * pulse))
+                # Bigger and more permanent-feeling blobs.
+                brush_radius = 16.0 + 92.0 * rms_drive + 18.0 * pulse + min(30.0, speed * 0.010)
+                brush_alpha = max(0.12, min(0.62, 0.16 + 0.36 * rms_drive + 0.16 * pulse))
 
                 add_soft_stamp(
                     canvas,
@@ -751,7 +767,7 @@ def run_session(win, collector):
                     cx,
                     cy,
                     rgb,
-                    min(1.0, rms * 2.7),
+                    min(1.0, 0.25 + rms_drive * 1.7),
                     shape_kind=brush_shape,
                     texture=brush_texture,
                 )
@@ -779,10 +795,13 @@ def run_session(win, collector):
             if vignette is not None:
                 vignette.draw()
 
-            status.text = (
-                f"MIC: {voice.mode} | glosnosc={rms:.3f}  widmo={centroid:.3f}  ziarnistosc={zcr:.3f}"
-                f" | pedzel: {brush_shape} | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
-            )
+            if now_t >= status_update_t:
+                status.text = (
+                    f"MIC: {voice.mode} | glosnosc={smooth_rms:.3f}  widmo={smooth_centroid:.3f}"
+                    f"  ziarnistosc={smooth_zcr:.3f} | pedzel: {brush_shape}"
+                    f" | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
+                )
+                status_update_t = now_t + 0.18
             status.draw()
 
             win.flip()
