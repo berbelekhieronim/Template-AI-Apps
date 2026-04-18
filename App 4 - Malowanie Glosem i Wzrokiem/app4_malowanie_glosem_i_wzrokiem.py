@@ -425,7 +425,7 @@ def build_base_canvas(w, h):
     return np.clip(canvas, 0.0, 1.0).astype(np.float32)
 
 
-def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha):
+def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha, shape_kind="circle", texture=0.0):
     h, w, _ = canvas.shape
     if not np.isfinite(cx) or not np.isfinite(cy):
         return
@@ -448,9 +448,37 @@ def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha):
     ys = np.arange(y0, y1, dtype=np.float32)[:, None]
     xs = np.arange(x0, x1, dtype=np.float32)[None, :]
 
-    dist2 = (xs - cx) ** 2 + (ys - cy) ** 2
+    dx = xs - cx
+    dy = ys - cy
+    dist2 = dx ** 2 + dy ** 2
     sigma2 = (rr * 0.62) ** 2
-    mask = np.exp(-dist2 / (2.0 * sigma2))
+
+    if shape_kind == "square":
+        edge = np.maximum(np.abs(dx), np.abs(dy))
+        mask = np.exp(-(edge ** 2) / (2.0 * sigma2))
+    elif shape_kind == "diamond":
+        manhattan = np.abs(dx) + np.abs(dy)
+        mask = np.exp(-(manhattan ** 2) / (2.0 * sigma2))
+    elif shape_kind == "ring":
+        dist = np.sqrt(np.maximum(0.0, dist2))
+        r0 = rr * (0.55 + 0.25 * texture)
+        band = rr * (0.12 + 0.16 * texture)
+        mask = np.exp(-((dist - r0) ** 2) / (2.0 * max(1e-6, band ** 2)))
+    elif shape_kind == "star":
+        ang = np.arctan2(dy, dx)
+        dist = np.sqrt(np.maximum(0.0, dist2))
+        petals = 5.0
+        radial = 0.70 + 0.30 * np.cos(petals * ang)
+        dist_mod = dist / np.maximum(1e-4, radial)
+        mask = np.exp(-(dist_mod ** 2) / (2.0 * sigma2))
+    else:
+        mask = np.exp(-dist2 / (2.0 * sigma2))
+
+    # Voice-driven grain texture on top of the base brush shape.
+    if texture > 0.0:
+        noise = np.random.uniform(1.0 - texture, 1.0, size=mask.shape).astype(np.float32)
+        mask *= noise
+
     mask *= max(0.0, min(1.0, alpha))
 
     region = canvas[y0:y1, x0:x1, :]
@@ -459,7 +487,7 @@ def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha):
     region[:] = region * (1.0 - blend) + target * blend
 
 
-def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength):
+def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength, shape_kind="circle", texture=0.0):
     if not np.isfinite(cx) or not np.isfinite(cy):
         return
     if not np.isfinite(strength):
@@ -474,7 +502,20 @@ def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength):
         ry = cy + math.sin(angle) * dist
         radius = random.uniform(3.0, 8.0 + 22.0 * strength)
         alpha = random.uniform(0.03, 0.11 + 0.16 * strength)
-        add_soft_stamp(canvas, rx, ry, radius, color_rgb, alpha)
+        add_soft_stamp(canvas, rx, ry, radius, color_rgb, alpha, shape_kind=shape_kind, texture=texture)
+
+
+def choose_brush_shape(rms, centroid, zcr):
+    """Pick brush shape from audio features so voice changes texture and geometry."""
+    if zcr > 0.22:
+        candidates = ["star", "ring", "diamond", "circle"]
+    elif centroid > 0.45:
+        candidates = ["diamond", "square", "ring", "circle"]
+    elif rms > 0.16:
+        candidates = ["square", "circle", "diamond", "ring"]
+    else:
+        candidates = ["circle", "diamond", "square", "ring"]
+    return random.choice(candidates)
 
 
 def pix_to_canvas(px, py):
@@ -624,19 +665,6 @@ def run_session(win, collector):
         )
 
     vignette = None
-    try:
-        vignette = visual.RadialStim(
-            win,
-            tex="sqr",
-            mask="raisedCos",
-            size=(view_w * 1.3, view_h * 1.3),
-            pos=(0, 0),
-            color=[-0.35, -0.35, -0.35],
-            opacity=0.20,
-            interpolate=True,
-        )
-    except Exception as exc:
-        print(f"[APP4] Warning: vignette disabled ({exc})")
 
     status = visual.TextStim(
         win,
@@ -660,6 +688,7 @@ def run_session(win, collector):
 
     saved_path = None
     render_warned = False
+    brush_shape = "circle"
 
     try:
         while True:
@@ -694,6 +723,8 @@ def run_session(win, collector):
             sat = max(0.35, min(1.0, 0.45 + 0.9 * centroid))
             val = max(0.35, min(1.0, 0.45 + 2.2 * rms + 0.2 * pulse))
             rgb = colorsys.hsv_to_rgb(hue, sat, val)
+            brush_shape = choose_brush_shape(rms, centroid, zcr)
+            brush_texture = max(0.0, min(0.65, 0.08 + 1.8 * zcr + 0.45 * rms))
 
             if gaze is not None:
                 sx, sy, speed = smoother.update(gaze[0], gaze[1], now_t)
@@ -705,12 +736,27 @@ def run_session(win, collector):
                 brush_radius = 6.0 + 65.0 * rms + 14.0 * pulse + min(28.0, speed * 0.012)
                 brush_alpha = max(0.03, min(0.44, 0.05 + 0.45 * rms + 0.15 * pulse))
 
-                add_soft_stamp(canvas, cx, cy, brush_radius, rgb, brush_alpha)
-                add_impressionistic_splatter(canvas, cx, cy, rgb, min(1.0, rms * 2.7))
+                add_soft_stamp(
+                    canvas,
+                    cx,
+                    cy,
+                    brush_radius,
+                    rgb,
+                    brush_alpha,
+                    shape_kind=brush_shape,
+                    texture=brush_texture,
+                )
+                add_impressionistic_splatter(
+                    canvas,
+                    cx,
+                    cy,
+                    rgb,
+                    min(1.0, rms * 2.7),
+                    shape_kind=brush_shape,
+                    texture=brush_texture,
+                )
 
-            # Gentle atmospheric fade keeps the painting dynamic.
-            canvas *= 0.9994
-            canvas += 0.0006 * base_canvas
+            # Keep strokes permanent; this app should behave like a paintbrush.
             canvas[:] = np.clip(canvas, 0.0, 1.0)
 
             frame_tex = np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
@@ -735,7 +781,7 @@ def run_session(win, collector):
 
             status.text = (
                 f"MIC: {voice.mode} | glosnosc={rms:.3f}  widmo={centroid:.3f}  ziarnistosc={zcr:.3f}"
-                f" | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
+                f" | pedzel: {brush_shape} | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
             )
             status.draw()
 
