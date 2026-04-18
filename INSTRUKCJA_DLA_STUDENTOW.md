@@ -16,6 +16,10 @@ Przed startem upewnij sie, ze masz:
 - Git,
 - Python 3.10+ (albo nowszy 3.x).
 
+Uwaga o systemie:
+- Windows: uzywaj skryptow `.bat`.
+- macOS/Linux: uzywaj skryptow `.sh`.
+
 ## 2) Pierwsze logowanie w VS Code
 
 1. Otworz VS Code.
@@ -55,10 +59,16 @@ W projekcie uruchom:
 install_deps.bat
 ```
 
+### macOS/Linux
+
+```bash
+bash install_deps.sh
+```
+
 ### Albo recznie (gdy skrypt nie dziala)
 
 ```bash
-py -3 -m pip install -r requirements-students.txt
+python3 -m pip install -r requirements-students.txt
 ```
 
 ## 5) Uruchomienie aplikacji szablonowej w trybie DEV
@@ -66,8 +76,16 @@ py -3 -m pip install -r requirements-students.txt
 1. Otworz folder `AI Template App`.
 2. Uruchom:
 
+### Windows
+
 ```bat
 AI Template App\run_app.bat
+```
+
+### macOS/Linux
+
+```bash
+bash "AI Template App/run_app.sh"
 ```
 
 3. Na ekranie startowym wybierz tryb `DEV`.
@@ -117,7 +135,8 @@ Jesli pracujecie na forkach, wysylajcie zmiany do swojego forka.
 - doinstaluj Git i uruchom ponownie VS Code.
 
 3. Brak bibliotek:
-- uruchom jeszcze raz `install_deps.bat`.
+- Windows: uruchom jeszcze raz `install_deps.bat`.
+- macOS/Linux: uruchom jeszcze raz `bash install_deps.sh`.
 
 4. Aplikacja nie laczy sie z eyetrackerem:
 - do testow wybierz tryb DEV.
@@ -131,3 +150,16 @@ Na koniec oddajecie:
 3. krotki opis: co aplikacja robi i jak ja uruchomic w DEV.
 
 Powodzenia i pracujcie iteracyjnie: mala zmiana -> test -> kolejna zmiana.
+
+## 11) Szybki start tylko dla MacBook (copy-paste)
+
+W terminalu VS Code wklej po kolei:
+
+```bash
+git clone https://github.com/berbelekhieronim/Template-AI-Apps.git
+cd Template-AI-Apps
+bash install_deps.sh
+bash "AI Template App/run_app.sh"
+```
+
+Potem na ekranie aplikacji wybierz tryb `DEV`.
