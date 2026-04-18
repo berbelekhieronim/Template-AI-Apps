@@ -504,26 +504,31 @@ def show_outro(win, saved_path):
 
 
 def run_session(win, collector):
-    canvas = build_base_canvas(CANVAS_W, CANVAS_H)
+    base_canvas = build_base_canvas(CANVAS_W, CANVAS_H)
+    canvas = base_canvas.copy()
     image = visual.ImageStim(
         win,
-        image=np.clip(canvas * 255.0, 0, 255).astype(np.uint8),
+        image=np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32),
         units="pix",
         size=(SCREEN_WIDTH, SCREEN_HEIGHT),
         pos=(0, 0),
         interpolate=True,
     )
 
-    vignette = visual.RadialStim(
-        win,
-        tex="sqr",
-        mask="raisedCos",
-        size=(SCREEN_WIDTH * 1.3, SCREEN_HEIGHT * 1.3),
-        pos=(0, 0),
-        color=[-0.35, -0.35, -0.35],
-        opacity=0.20,
-        interpolate=True,
-    )
+    vignette = None
+    try:
+        vignette = visual.RadialStim(
+            win,
+            tex="sqr",
+            mask="raisedCos",
+            size=(SCREEN_WIDTH * 1.3, SCREEN_HEIGHT * 1.3),
+            pos=(0, 0),
+            color=[-0.35, -0.35, -0.35],
+            opacity=0.20,
+            interpolate=True,
+        )
+    except Exception as exc:
+        print(f"[APP4] Warning: vignette disabled ({exc})")
 
     status = visual.TextStim(
         win,
@@ -545,68 +550,85 @@ def run_session(win, collector):
     frame_clock = core.Clock()
 
     saved_path = None
+    render_warned = False
 
-    while True:
-        dt = max(1e-4, frame_clock.getTime())
-        frame_clock.reset()
+    try:
+        while True:
+            dt = max(1e-4, frame_clock.getTime())
+            frame_clock.reset()
 
-        now_t = clock.getTime()
-        if now_t > SESSION_SECONDS:
-            break
+            now_t = clock.getTime()
+            if now_t > SESSION_SECONDS:
+                break
 
-        reveal_cursor_if_moved(win)
-        keys = event.getKeys(["escape", "space", "c", "s"])
-        if "escape" in keys:
-            voice.stop()
-            return None
-        if "space" in keys:
-            break
-        if "c" in keys:
-            canvas = build_base_canvas(CANVAS_W, CANVAS_H)
-        if "s" in keys:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            candidate = HERE / f"app4_artwork_{ts}.png"
-            saved_path = save_canvas(canvas, candidate)
+            reveal_cursor_if_moved(win)
+            keys = event.getKeys(["escape", "space", "c", "s"])
+            if "escape" in keys:
+                return None
+            if "space" in keys:
+                break
+            if "c" in keys:
+                canvas = base_canvas.copy()
+            if "s" in keys:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                candidate = HERE / f"app4_artwork_{ts}.png"
+                saved_path = save_canvas(canvas, candidate)
 
-        gaze = collector.get_gaze_pix()
-        rms, centroid, zcr = voice.get_features(dt)
+            gaze = collector.get_gaze_pix()
+            rms, centroid, zcr = voice.get_features(dt)
 
-        pulse_phase += dt * (1.5 + 6.0 * centroid)
-        pulse = 0.5 + 0.5 * math.sin(pulse_phase * 2.0 * math.pi)
+            pulse_phase += dt * (1.5 + 6.0 * centroid)
+            pulse = 0.5 + 0.5 * math.sin(pulse_phase * 2.0 * math.pi)
 
-        hue = (hue + dt * (0.04 + 0.7 * centroid + 0.35 * zcr + 0.10 * pulse)) % 1.0
-        sat = max(0.35, min(1.0, 0.45 + 0.9 * centroid))
-        val = max(0.35, min(1.0, 0.45 + 2.2 * rms + 0.2 * pulse))
-        rgb = colorsys.hsv_to_rgb(hue, sat, val)
+            hue = (hue + dt * (0.04 + 0.7 * centroid + 0.35 * zcr + 0.10 * pulse)) % 1.0
+            sat = max(0.35, min(1.0, 0.45 + 0.9 * centroid))
+            val = max(0.35, min(1.0, 0.45 + 2.2 * rms + 0.2 * pulse))
+            rgb = colorsys.hsv_to_rgb(hue, sat, val)
 
-        if gaze is not None:
-            sx, sy, speed = smoother.update(gaze[0], gaze[1], now_t)
-            cx, cy = pix_to_canvas(sx, sy)
+            if gaze is not None:
+                sx, sy, speed = smoother.update(gaze[0], gaze[1], now_t)
+                cx, cy = pix_to_canvas(sx, sy)
 
-            brush_radius = 6.0 + 65.0 * rms + 14.0 * pulse + min(28.0, speed * 0.012)
-            brush_alpha = max(0.03, min(0.44, 0.05 + 0.45 * rms + 0.15 * pulse))
+                brush_radius = 6.0 + 65.0 * rms + 14.0 * pulse + min(28.0, speed * 0.012)
+                brush_alpha = max(0.03, min(0.44, 0.05 + 0.45 * rms + 0.15 * pulse))
 
-            add_soft_stamp(canvas, cx, cy, brush_radius, rgb, brush_alpha)
-            add_impressionistic_splatter(canvas, cx, cy, rgb, min(1.0, rms * 2.7))
+                add_soft_stamp(canvas, cx, cy, brush_radius, rgb, brush_alpha)
+                add_impressionistic_splatter(canvas, cx, cy, rgb, min(1.0, rms * 2.7))
 
-        # Gentle atmospheric fade keeps the painting dynamic.
-        canvas *= 0.9994
-        canvas += 0.0006 * build_base_canvas(CANVAS_W, CANVAS_H)
-        canvas[:] = np.clip(canvas, 0.0, 1.0)
+            # Gentle atmospheric fade keeps the painting dynamic.
+            canvas *= 0.9994
+            canvas += 0.0006 * base_canvas
+            canvas[:] = np.clip(canvas, 0.0, 1.0)
 
-        image.image = np.clip(canvas * 255.0, 0, 255).astype(np.uint8)
-        image.draw()
-        vignette.draw()
+            frame_tex = np.clip(canvas * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
+            try:
+                image.image = frame_tex
+                image.draw()
+            except Exception as exc:
+                if not render_warned:
+                    print(f"[APP4] Warning: texture update fallback enabled ({exc})")
+                    render_warned = True
+                image = visual.ImageStim(
+                    win,
+                    image=frame_tex,
+                    units="pix",
+                    size=(SCREEN_WIDTH, SCREEN_HEIGHT),
+                    pos=(0, 0),
+                    interpolate=False,
+                )
+                image.draw()
+            if vignette is not None:
+                vignette.draw()
 
-        status.text = (
-            f"MIC: {voice.mode} | glosnosc={rms:.3f}  widmo={centroid:.3f}  ziarnistosc={zcr:.3f}"
-            f" | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
-        )
-        status.draw()
+            status.text = (
+                f"MIC: {voice.mode} | glosnosc={rms:.3f}  widmo={centroid:.3f}  ziarnistosc={zcr:.3f}"
+                f" | czas: {int(max(0, SESSION_SECONDS - now_t))}s"
+            )
+            status.draw()
 
-        win.flip()
-
-    voice.stop()
+            win.flip()
+    finally:
+        voice.stop()
 
     if saved_path is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
