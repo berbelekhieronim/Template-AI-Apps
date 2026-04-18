@@ -20,6 +20,11 @@ Uwaga o systemie:
 - Windows: uzywaj skryptow `.bat`.
 - macOS/Linux: uzywaj skryptow `.sh`.
 
+Wazne (MacBook):
+- Na MacBooku pracuj zawsze w trybie `DEV`.
+- Tryb `TEACHER` jest tylko na stanowisku prowadzacego z podlaczonym Tobii i lokalnym SDK.
+- Nie traktuj bledu polaczenia z Tobii na Macu jako bledu aplikacji.
+
 ## 2) Pierwsze logowanie w VS Code
 
 1. Otworz VS Code.
