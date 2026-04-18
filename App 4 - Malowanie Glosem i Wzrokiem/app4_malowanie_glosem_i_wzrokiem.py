@@ -180,8 +180,13 @@ class GazeCollector:
 
         if not xs:
             return None
-
-        return norm_to_pix(sum(xs) / len(xs), sum(ys) / len(ys))
+        nx = sum(xs) / len(xs)
+        ny = sum(ys) / len(ys)
+        if not np.isfinite(nx) or not np.isfinite(ny):
+            return None
+        nx = max(-0.3, min(1.3, nx))
+        ny = max(-0.3, min(1.3, ny))
+        return norm_to_pix(nx, ny)
 
 
 def connect_eyetracker():
@@ -408,7 +413,17 @@ def build_base_canvas(w, h):
 
 def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha):
     h, w, _ = canvas.shape
+    if not np.isfinite(cx) or not np.isfinite(cy):
+        return
+    if not np.isfinite(radius) or radius <= 0:
+        return
+    if not np.isfinite(alpha):
+        return
+
     rr = max(2.0, float(radius))
+    cx = max(0.0, min(float(w - 1), float(cx)))
+    cy = max(0.0, min(float(h - 1), float(cy)))
+
     x0 = max(0, int(cx - rr * 1.8))
     x1 = min(w, int(cx + rr * 1.8) + 1)
     y0 = max(0, int(cy - rr * 1.8))
@@ -431,6 +446,12 @@ def add_soft_stamp(canvas, cx, cy, radius, color_rgb, alpha):
 
 
 def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength):
+    if not np.isfinite(cx) or not np.isfinite(cy):
+        return
+    if not np.isfinite(strength):
+        return
+
+    strength = max(0.0, min(1.0, float(strength)))
     n = int(2 + strength * 8)
     for _ in range(n):
         angle = random.uniform(0.0, 2.0 * math.pi)
@@ -443,8 +464,14 @@ def add_impressionistic_splatter(canvas, cx, cy, color_rgb, strength):
 
 
 def pix_to_canvas(px, py):
+    if not np.isfinite(px) or not np.isfinite(py):
+        return None
+
     nx = (px / SCREEN_WIDTH) + 0.5
     ny = 0.5 - (py / SCREEN_HEIGHT)
+    nx = max(0.0, min(1.0, nx))
+    ny = max(0.0, min(1.0, ny))
+
     x = nx * (CANVAS_W - 1)
     y = ny * (CANVAS_H - 1)
     return x, y
@@ -652,7 +679,10 @@ def run_session(win, collector):
 
             if gaze is not None:
                 sx, sy, speed = smoother.update(gaze[0], gaze[1], now_t)
-                cx, cy = pix_to_canvas(sx, sy)
+                xy = pix_to_canvas(sx, sy)
+                if xy is None:
+                    continue
+                cx, cy = xy
 
                 brush_radius = 6.0 + 65.0 * rms + 14.0 * pulse + min(28.0, speed * 0.012)
                 brush_alpha = max(0.03, min(0.44, 0.05 + 0.45 * rms + 0.15 * pulse))
