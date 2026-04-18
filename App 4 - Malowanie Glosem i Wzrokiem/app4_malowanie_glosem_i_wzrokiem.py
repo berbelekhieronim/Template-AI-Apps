@@ -213,7 +213,9 @@ def run_calibration(win, eyetracker):
         info.draw()
         win.flip()
         keys = event.waitKeys(keyList=["space", "escape"])
-        return "escape" not in keys
+        if "escape" in keys:
+            return None
+        return True
 
     calibration = tr.ScreenBasedCalibration(eyetracker)
     calibration.enter_calibration_mode()
@@ -234,7 +236,7 @@ def run_calibration(win, eyetracker):
     keys = event.waitKeys(keyList=["space", "escape"])
     if "escape" in keys:
         calibration.leave_calibration_mode()
-        return False
+        return None
 
     for nx, ny in points:
         px, py = norm_to_pix(nx, ny)
@@ -258,7 +260,12 @@ def run_calibration(win, eyetracker):
 
     result = calibration.compute_and_apply()
     calibration.leave_calibration_mode()
-    return result.status == tr.CALIBRATION_STATUS_SUCCESS
+
+    # Do not hard-stop the app on imperfect calibration; continue with warning.
+    status = getattr(result, "status", None)
+    if status != tr.CALIBRATION_STATUS_SUCCESS:
+        print(f"[APP4] Warning: calibration status = {status}. Continuing anyway.")
+    return True
 
 
 # ============================================================================
@@ -663,8 +670,9 @@ def main():
         if not show_intro(win):
             return
 
-        if not run_calibration(win, eyetracker):
-            print("Kalibracja nieudana lub anulowana.")
+        cal_result = run_calibration(win, eyetracker)
+        if cal_result is None:
+            print("Kalibracja anulowana.")
             return
 
         # Flush key events so held SPACE from previous screens does not end session.
