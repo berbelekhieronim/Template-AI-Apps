@@ -24,34 +24,16 @@ from pathlib import Path
 import numpy as np
 
 # ============================================================================
-# 0. WYBOR TRYBU
+# 0. KONFIGURACJA TOBII
 # ============================================================================
 HERE = Path(__file__).resolve().parent
 SDK_PATH = HERE.parent / "x3-120 SDK" / "64"
 
-print()
-print("=" * 56)
-print("      APP 1 - ZDROWY WYBOR | WYBOR TRYBU")
-print("=" * 56)
-print("[1] TRYB DEV      (mysz = spojrzenie, bez eye-trackera)")
-print("[2] TRYB NAUCZYCIELA (realny Tobii X3-120)")
-print()
-
-while True:
-    wybor = input("Wybierz tryb (1 lub 2): ").strip()
-    if wybor in ("1", "2"):
-        break
-    print("Podaj 1 albo 2.")
-
-DEV_MODE = wybor == "1"
-print("Uruchamiam:", "TRYB DEV" if DEV_MODE else "TRYB NAUCZYCIELA")
-
-if not DEV_MODE:
-    if not SDK_PATH.exists():
-        raise FileNotFoundError(f"Nie znaleziono SDK Tobii: {SDK_PATH}")
-    sdk_str = str(SDK_PATH)
-    if sdk_str not in sys.path:
-        sys.path.insert(0, sdk_str)
+if not SDK_PATH.exists():
+    raise FileNotFoundError(f"Nie znaleziono SDK Tobii: {SDK_PATH}")
+sdk_str = str(SDK_PATH)
+if sdk_str not in sys.path:
+    sys.path.insert(0, sdk_str)
 
 # ============================================================================
 # 1. IMPORTY
@@ -63,8 +45,7 @@ except ImportError as exc:
         "Brak PsychoPy. Zainstaluj: pip install psychopy"
     ) from exc
 
-if not DEV_MODE:
-    import tobii_research as tr
+import tobii_research as tr
 
 logging.console.setLevel(logging.ERROR)
 
@@ -178,15 +159,9 @@ class GazeCollector:
         self._et = eyetracker
         self._win = win
         self._last = None
-        self._mouse = None
         self.active = False
 
     def start(self):
-        if DEV_MODE:
-            self._mouse = event.Mouse(win=self._win)
-            self.active = True
-            return
-
         self._et.subscribe_to(
             tr.EYETRACKER_GAZE_DATA,
             self._callback,
@@ -195,7 +170,7 @@ class GazeCollector:
         self.active = True
 
     def stop(self):
-        if not DEV_MODE and self.active:
+        if self.active:
             self._et.unsubscribe_from(tr.EYETRACKER_GAZE_DATA, self._callback)
         self.active = False
 
@@ -203,11 +178,6 @@ class GazeCollector:
         self._last = data
 
     def get_gaze_pix(self):
-        if DEV_MODE:
-            if self._mouse is None:
-                return None
-            return self._mouse.getPos()
-
         d = self._last
         if d is None:
             return None
@@ -230,9 +200,6 @@ class GazeCollector:
 
 
 def connect_eyetracker():
-    if DEV_MODE:
-        return "DEV"
-
     trackery = tr.find_all_eyetrackers()
     if not trackery:
         return None
@@ -255,23 +222,6 @@ CAL_POINTS = [
 
 
 def run_calibration(win, eyetracker):
-    if DEV_MODE:
-        info = visual.TextStim(
-            win,
-            text=(
-                "TRYB DEV\n"
-                "Kalibracja pomijana (mysz symuluje spojrzenie).\n\n"
-                "Nacisnij SPACJE, aby przejsc dalej."
-            ),
-            color="yellow",
-            height=32,
-            wrapWidth=1300,
-        )
-        info.draw()
-        win.flip()
-        keys = event.waitKeys(keyList=["space", "escape"])
-        return "escape" not in keys
-
     calibration = tr.ScreenBasedCalibration(eyetracker)
     calibration.enter_calibration_mode()
 
@@ -696,7 +646,7 @@ def feedback_po_probie(win, trial_idx, choice_side, rt):
 
 
 def ekran_raportu(win, wyniki, podsumowanie):
-    heatmaps = [zrob_heatmape(w["samples"], width=200, height=120) for w in wyniki]
+    heatmaps = [zrob_heatmape(w.get("samples", []), width=200, height=120) for w in wyniki]
 
     title = visual.TextStim(
         win,
@@ -722,8 +672,10 @@ def ekran_raportu(win, wyniki, podsumowanie):
 
     summary_lines.extend(["", "Najdluzsza fiksacja w probach:"])
     for w in wyniki:
+        side = w.get("longest_fix_side", "brak")
+        side_label = "LEWO" if side == "left" else ("PRAWO" if side == "right" else "BRAK")
         summary_lines.append(
-            f"P{w['trial']}: {w['longest_fix_word']} ({'LEWO' if w['longest_fix_side']=='left' else 'PRAWO'})"
+            f"P{w.get('trial', '?')}: {w.get('longest_fix_word', 'brak danych')} ({side_label})"
         )
 
     summary = visual.TextStim(
@@ -741,7 +693,20 @@ def ekran_raportu(win, wyniki, podsumowanie):
     gaze_markers = []
     slots = [(-250, -120), (100, -120), (450, -120), (-75, -360), (275, -360)]
 
-    for i, hm in enumerate(heatmaps):
+    max_items = min(len(heatmaps), len(slots), len(wyniki))
+    if len(heatmaps) > max_items:
+        labels.append(
+            visual.TextStim(
+                win,
+                text="Uwaga: pokazano tylko pierwsze 5 heatmap.",
+                color="orange",
+                height=14,
+                pos=(275, -505),
+            )
+        )
+
+    for i in range(max_items):
+        hm = heatmaps[i]
         pos = slots[i]
         images.append(
             visual.ImageStim(
@@ -766,7 +731,7 @@ def ekran_raportu(win, wyniki, podsumowanie):
         )
 
         # Dodatkowe znaczniki: tor spojrzen + ostatnia fiksacja przed decyzja
-        samples = wyniki[i]["samples"]
+        samples = wyniki[i].get("samples", [])
         if samples:
             # Redukcja liczby punktow dla czytelnosci (max ~35 punktow)
             step = max(1, len(samples) // 35)
@@ -933,7 +898,7 @@ def main():
             win,
             text=(
                 "Nie znaleziono eye-trackera Tobii.\n\n"
-                "Podlacz urzadzenie lub uruchom ponownie w TRYBIE DEV.\n"
+                "Podlacz urzadzenie i uruchom ponownie aplikacje.\n"
                 "Nacisnij dowolny klawisz, aby wyjsc."
             ),
             color="orange",
